@@ -47,7 +47,7 @@ export function LayersPanel() {
         selectedIds={selectedIds}
         onReorder={canvas.setObjectOrder}
         onSelect={canvas.selectObject}
-        onRename={(id, name) => canvas.patchObject(id, { name })}
+        onRename={canvas.renameObject}
         onToggleHidden={(id) => {
           const object = objects.find((item) => item.id === id);
           if (object) canvas.setObjectHidden(id, !object.hidden);

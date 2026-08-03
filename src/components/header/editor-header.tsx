@@ -14,6 +14,8 @@ export interface EditorHeaderProps {
   onDesignNameChange: (name: string) => void;
   saveStatus: SaveState;
   onSave: () => void;
+  /** Controls that need the editor's state, rendered before Save. */
+  actions?: React.ReactNode;
 }
 
 /**
@@ -29,6 +31,7 @@ export function EditorHeader({
   onDesignNameChange,
   saveStatus,
   onSave,
+  actions,
 }: EditorHeaderProps) {
   return (
     <header className="relative z-40 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-3 sm:px-4">
@@ -43,6 +46,8 @@ export function EditorHeader({
         <DesignName value={designName} onChange={onDesignNameChange} />
         <SaveStatus status={saveStatus} className="hidden shrink-0 sm:inline-flex" />
       </div>
+
+      {actions}
 
       <HeaderButton
         icon={Save}

@@ -19,7 +19,7 @@ export const SHEET_SIZES: SheetSize[] = [
 export const DEFAULT_SHEET_SIZE = "22x24";
 
 /** Artwork formats the sheet accepts, listed in the canvas empty state. */
-export const SHEET_FORMATS = ["PNG", "SVG", "PDF", "AI", "EPS"];
+export const SHEET_FORMATS = ["PNG", "JPG", "SVG"];
 
 /**
  * Fixed production specs shown on the sheet's spec card. Constants rather than
@@ -142,3 +142,16 @@ export function toInches(value: number, unit: MeasurementUnit): number {
 
 /** Resolution a file has to reach to be considered print ready. */
 export const PRINT_READY_DPI = 300;
+
+/**
+ * Real print resolution: how many of the file's own pixels land in each inch
+ * of the printed result.
+ *
+ * This is why DPI is never stored on an asset. The same file prints at 600 DPI
+ * across two inches and at 120 across ten, so the only honest figure is the
+ * one computed against the size the artwork is actually placed at.
+ */
+export function effectiveDpi(pixels: number, inches: number): number {
+  if (inches <= 0) return 0;
+  return Math.round(pixels / inches);
+}

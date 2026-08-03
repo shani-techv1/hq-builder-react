@@ -7,6 +7,7 @@ import { Copy, Expand, MoreHorizontal, Star } from "lucide-react";
 import { AssetContextMenu } from "@/components/assets/asset-context-menu";
 import { InlineRenameInput } from "@/components/common/inline-rename-input";
 import {
+  ASSET_DRAG_TYPE,
   formatDimensions,
   formatFileSize,
   formatResolution,
@@ -15,9 +16,18 @@ import {
 } from "@/lib/assets";
 import { cn } from "@/lib/utils";
 
+/**
+ * How long a single click waits to see whether a second one follows. Just
+ * under the platform double-click threshold, so the preview still feels
+ * immediate.
+ */
+const DOUBLE_CLICK_GRACE_MS = 250;
+
 export interface AssetCardProps {
   asset: Asset;
   onOpen: () => void;
+  /** Put this asset on the sheet — a double-click, or a drop on the canvas. */
+  onPlace: () => void;
   onRename: (name: string) => void;
   onDuplicate: () => void;
   onToggleFavorite: () => void;
@@ -32,13 +42,15 @@ export interface AssetCardProps {
  * metadata a print operator needs before placing a file — dimensions,
  * resolution, weight and when it arrived.
  *
- * The card is built to be dragged onto the canvas later, so it already reads
- * as grabbable: a grab cursor, and a ghost that peels off while it's held.
- * None of that moves anything yet.
+ * Two ways onto the sheet, because the card is both a preview and a source:
+ * double-click places it centred, and dragging it places it where it lands.
+ * Only the asset's id travels in the drag — the canvas resolves the artwork
+ * itself, so nothing about the file is copied to move it.
  */
 export function AssetCard({
   asset,
   onOpen,
+  onPlace,
   onRename,
   onDuplicate,
   onToggleFavorite,
@@ -47,6 +59,39 @@ export function AssetCard({
 }: AssetCardProps) {
   const [isHeld, setIsHeld] = React.useState(false);
   const [isRenaming, setIsRenaming] = React.useState(false);
+
+  const handleDragStart = (event: React.DragEvent) => {
+    event.dataTransfer.setData(ASSET_DRAG_TYPE, asset.id);
+    event.dataTransfer.effectAllowed = "copy";
+  };
+
+  /**
+   * The two gestures share a target, so the preview has to wait to find out
+   * which one it was — a double-click fires `click` first, and opening the
+   * drawer before placing would bury the artwork the user just placed.
+   */
+  const pendingOpen = React.useRef<number | null>(null);
+
+  const cancelPendingOpen = () => {
+    if (pendingOpen.current === null) return;
+    window.clearTimeout(pendingOpen.current);
+    pendingOpen.current = null;
+  };
+
+  React.useEffect(() => cancelPendingOpen, []);
+
+  const handleClick = () => {
+    if (pendingOpen.current !== null) return;
+    pendingOpen.current = window.setTimeout(() => {
+      pendingOpen.current = null;
+      onOpen();
+    }, DOUBLE_CLICK_GRACE_MS);
+  };
+
+  const handleDoubleClick = () => {
+    cancelPendingOpen();
+    onPlace();
+  };
 
   return (
     <motion.div
@@ -79,22 +124,30 @@ export function AssetCard({
           "hover:border-primary/35 group-hover/card:shadow-card",
         )}
       >
-        <div className="relative aspect-[4/3] overflow-hidden">
-          <span
-            aria-hidden
+        {/* The drag source is the thumbnail rather than the whole card: it is
+            the part that already reads as grabbable, and it leaves the footer
+            free for the rename field. */}
+        <div
+          draggable
+          onDragStart={handleDragStart}
+          onDragEnd={() => setIsHeld(false)}
+          className="bg-checkerboard relative aspect-4/3 overflow-hidden"
+        >
+          {/* A locally generated data URL, so there is nothing for the image
+              optimiser to fetch, size or cache.
+
+              No `draggable={false}` either: browsers differ on whether an
+              opted-out child still lets its draggable ancestor be the drag
+              source, and `dragstart` bubbles to the handler regardless. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={asset.thumbnail}
+            alt=""
             className={cn(
-              "absolute inset-0 bg-linear-to-br transition-transform duration-300",
-              "group-hover/card:scale-[1.04]",
-              asset.swatch,
+              "absolute inset-0 size-full object-contain p-1.5",
+              "transition-transform duration-300 group-hover/card:scale-[1.04]",
             )}
           />
-          {/* Transparent artwork reads as such through a checker margin. */}
-          {asset.transparent ? (
-            <span
-              aria-hidden
-              className="bg-checkerboard absolute inset-x-0 bottom-0 h-2 opacity-70"
-            />
-          ) : null}
 
           <span
             aria-hidden
@@ -107,8 +160,9 @@ export function AssetCard({
           {/* Full-bleed click target, under the chrome that sits on top of it. */}
           <button
             type="button"
-            onClick={onOpen}
-            aria-label={`Preview ${asset.name}`}
+            onClick={handleClick}
+            onDoubleClick={handleDoubleClick}
+            aria-label={`Preview ${asset.name}. Double-click to place it on the sheet.`}
             className={cn(
               "absolute inset-0 cursor-grab active:cursor-grabbing",
               "outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50",
@@ -149,6 +203,7 @@ export function AssetCard({
             <AssetContextMenu
               asset={asset}
               onPreview={onOpen}
+              onPlace={onPlace}
               onRename={() => setIsRenaming(true)}
               onDuplicate={onDuplicate}
               onToggleFavorite={onToggleFavorite}

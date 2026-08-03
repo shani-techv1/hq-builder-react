@@ -23,17 +23,31 @@ import { ValidationBadge } from "@/components/inspector/validation-badge";
 import type { CanvasInteraction } from "@/hooks/use-canvas-interaction";
 import type { WorkspaceSettings } from "@/components/editor/editor-state";
 import { KIND_LABELS, type CanvasObject } from "@/lib/canvas-objects";
-import { formatUploadDate } from "@/lib/assets";
+import {
+  formatFileSize,
+  formatUploadDate,
+  isVectorAsset,
+  printReadyInches,
+  type Asset,
+} from "@/lib/assets";
 import {
   PRINT_READY_DPI,
+  effectiveDpi,
   fromInches,
   sheetInches,
   toInches,
+  type MeasurementUnit,
 } from "@/lib/workspace";
 import { cn } from "@/lib/utils";
 
+/** The widest this artwork prints while still holding {@link PRINT_READY_DPI}. */
+const printReadyWidth = (asset: Asset, unit: MeasurementUnit) =>
+  `${fromInches(printReadyInches(asset.width), unit)} ${unit}`;
+
 export interface ImageInspectorProps {
   object: CanvasObject;
+  /** The library asset behind the object, when it has one. */
+  asset: Asset | undefined;
   canvas: CanvasInteraction;
   settings: WorkspaceSettings;
 }
@@ -51,6 +65,7 @@ export interface ImageInspectorProps {
  */
 export function ImageInspector({
   object,
+  asset,
   canvas,
   settings,
 }: ImageInspectorProps) {
@@ -82,9 +97,32 @@ export function ImageInspector({
     );
   };
 
-  const dpi = object.source?.dpi ?? null;
-  const isVectorSource = dpi === null;
-  const isPrintReady = isVectorSource || dpi >= PRINT_READY_DPI;
+  /* -------------------------- Print resolution -------------------------- */
+
+  /** What the artwork actually measures on the sheet right now. */
+  const renderedWidth = (object.width / 100) * sheet.width;
+  const renderedHeight = (object.height / 100) * sheet.height;
+
+  /**
+   * Real DPI, recomputed on every resize.
+   *
+   * Uploaded artwork carries no stored resolution — the same file is 600 DPI
+   * across two inches and 120 across ten — so the figure comes from the file's
+   * pixels divided by the size it is currently placed at. Objects with no
+   * asset behind them fall back to whatever their mock source declared.
+   */
+  const isVectorSource = asset ? isVectorAsset(asset) : !object.source?.dpi;
+  const dpi = asset
+    ? isVectorSource
+      ? null
+      : effectiveDpi(asset.width, renderedWidth)
+    : (object.source?.dpi ?? null);
+
+  // A warning, never a block: low-resolution artwork still places, and the
+  // operator decides whether it is good enough for the job.
+  const isPrintReady = dpi === null || dpi >= PRINT_READY_DPI;
+
+  const uploadedAt = asset?.uploadedAt ?? object.source?.uploadedAt;
 
   return (
     <>
@@ -263,17 +301,38 @@ export function ImageInspector({
               ? "Vector artwork scales to any size without losing detail."
               : isPrintReady
                 ? "Resolution passes at this size."
-                : `At this size the artwork prints at ${dpi} DPI. Scale it down or replace it with a higher-resolution file.`
+                : `At this size the artwork prints at ${dpi} DPI. Scale it down${
+                    asset
+                      ? ` — it holds ${PRINT_READY_DPI} DPI up to ${printReadyWidth(
+                          asset,
+                          unit,
+                        )} wide — or replace it with a higher-resolution file.`
+                      : " or replace it with a higher-resolution file."
+                  }`
           }
         />
 
         <MetadataTable
           entries={[
             {
-              label: "Resolution",
+              label: "Current DPI",
               value: isVectorSource ? "Vector" : `${dpi} DPI`,
             },
             { label: "Required", value: `${PRINT_READY_DPI} DPI`, muted: true },
+            {
+              label: "Rendered size",
+              value: `${fromInches(renderedWidth, unit)} × ${fromInches(
+                renderedHeight,
+                unit,
+              )} ${unit}`,
+            },
+            {
+              label: "Original size",
+              value: asset
+                ? `${asset.width} × ${asset.height} px`
+                : "—",
+              muted: !asset,
+            },
           ]}
         />
       </InspectorSection>
@@ -283,26 +342,35 @@ export function ImageInspector({
           entries={[
             {
               label: "Filename",
-              value: object.source?.fileName ?? object.name,
+              value: asset?.name ?? object.source?.fileName ?? object.name,
             },
             {
-              label: "Type",
-              value: object.source?.fileType ?? KIND_LABELS[object.kind],
+              label: "Format",
+              value:
+                asset?.format ??
+                object.source?.fileType ??
+                KIND_LABELS[object.kind],
+            },
+            {
+              label: "File size",
+              value: asset ? formatFileSize(asset.sizeBytes) : "—",
+              muted: !asset,
             },
             {
               label: "Transparency",
-              value: object.source?.transparent ? "Transparent" : "Flattened",
+              value: (asset?.transparent ?? object.source?.transparent)
+                ? "Transparent"
+                : "Flattened",
             },
             {
               label: "Colour mode",
-              value: object.source?.colorMode ?? "RGB",
+              // Anything decoded in the browser is RGB by the time it is here.
+              value: asset ? "RGB" : (object.source?.colorMode ?? "RGB"),
             },
             {
               label: "Uploaded",
-              value: object.source
-                ? formatUploadDate(object.source.uploadedAt)
-                : "—",
-              muted: !object.source,
+              value: uploadedAt ? formatUploadDate(uploadedAt) : "—",
+              muted: !uploadedAt,
             },
           ]}
         />

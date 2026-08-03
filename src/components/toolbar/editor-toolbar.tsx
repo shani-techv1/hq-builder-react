@@ -1,6 +1,6 @@
 "use client";
 
-import { Grid2x2, Image, Magnet, Redo2, Undo2 } from "lucide-react";
+import { Grid2x2, Image, Magnet, Redo2, Type, Undo2 } from "lucide-react";
 
 import { SheetSizeSelect } from "@/components/toolbar/sheet-size-select";
 import { ToolbarButton } from "@/components/toolbar/toolbar-button";
@@ -14,6 +14,8 @@ export interface EditorToolbarProps {
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
+  /** Adds a text layer, ready to type into. */
+  onAddText: () => void;
   showBackground: boolean;
   onShowBackgroundChange: (value: boolean) => void;
   showGrid: boolean;
@@ -42,6 +44,7 @@ export function EditorToolbar({
   canRedo,
   onUndo,
   onRedo,
+  onAddText,
   showBackground,
   onShowBackgroundChange,
   showGrid,
@@ -81,6 +84,12 @@ export function EditorToolbar({
             onClick={onRedo}
             disabled={!canRedo}
           />
+
+          <ToolbarDivider />
+
+          {/* The one control here that adds something to the sheet, so it sits
+              apart from the display toggles rather than among them. */}
+          <ToolbarButton icon={Type} label="Add text" onClick={onAddText} />
 
           <ToolbarDivider />
 

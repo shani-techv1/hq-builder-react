@@ -4,10 +4,18 @@ import * as React from "react";
 
 import {
   MOCK_ARTWORK,
+  applyPatch,
   boundingBox,
+  createPlacedAsset,
+  createTextObject,
+  renameFirstLine,
   type CanvasObject,
+  type CanvasObjectPatch,
+  type PlacementPoint,
   type SelectionBox,
 } from "@/lib/canvas-objects";
+import type { Asset } from "@/lib/assets";
+import type { DesignDocument } from "@/lib/design-document";
 import {
   canRedo,
   canUndo,
@@ -19,7 +27,7 @@ import {
   type HistoryPolicy,
   type HistoryState,
 } from "@/lib/history";
-import { DEFAULT_SHEET_SIZE } from "@/lib/workspace";
+import { DEFAULT_SHEET_SIZE, sheetInches } from "@/lib/workspace";
 
 /** Offset applied to a duplicate so it doesn't land exactly on its source. */
 const DUPLICATE_OFFSET = 3;
@@ -37,6 +45,8 @@ interface CanvasState {
   sheetSize: string;
   /** Monotonic counter behind duplicate ids — keeps the reducer deterministic. */
   copyCount: number;
+  /** The same, for placements: the id of the nth asset dropped on this sheet. */
+  placeCount: number;
 }
 
 type CanvasAction =
@@ -44,32 +54,43 @@ type CanvasAction =
   | { type: "setSelection"; ids: string[] }
   | { type: "patchObjects"; updates: ObjectPatch[] }
   | { type: "clear" }
+  | { type: "placeAsset"; asset: Asset; at?: PlacementPoint }
+  | { type: "addText"; id: string }
+  | { type: "renameObject"; id: string; name: string }
+  | { type: "syncMetrics"; updates: ObjectPatch[] }
   | { type: "addMockArtwork" }
   | { type: "duplicate" }
   | { type: "delete" }
   | { type: "rotate"; degrees: number }
   | { type: "toggleLock" }
   | { type: "setOpacity"; opacity: number }
-  | { type: "patch"; patch: Partial<CanvasObject> }
-  | { type: "patchObject"; id: string; patch: Partial<CanvasObject> }
+  | { type: "patch"; patch: CanvasObjectPatch }
+  | { type: "patchObject"; id: string; patch: CanvasObjectPatch }
   | { type: "setHidden"; id: string; hidden: boolean }
   | { type: "deleteObject"; id: string }
   | { type: "setOrder"; ids: string[] }
   | { type: "moveToEnd"; id: string; edge: "front" | "back" }
   | { type: "setSheetSize"; sheetSize: string };
 
-/** Stack navigation. Handled by the wrapper, never by the document reducer. */
+/**
+ * Actions the history wrapper handles itself.
+ *
+ * `replaceDocument` belongs here rather than with the document actions because
+ * it does not edit the design, it swaps it — undoing back into the design that
+ * was on screen before a draft was restored would be a trap.
+ */
 type HistoryAction =
   | { type: "undo" }
   | { type: "redo" }
-  | { type: "clearHistory" };
+  | { type: "clearHistory" }
+  | { type: "replaceDocument"; document: DesignDocument };
 
 type EditorAction = CanvasAction | HistoryAction;
 
 /** One object's worth of change, used when a whole selection is transformed. */
 export interface ObjectPatch {
   id: string;
-  patch: Partial<CanvasObject>;
+  patch: CanvasObjectPatch;
 }
 
 const INITIAL_STATE: CanvasState = {
@@ -77,6 +98,7 @@ const INITIAL_STATE: CanvasState = {
   selectedIds: [],
   sheetSize: DEFAULT_SHEET_SIZE,
   copyCount: 0,
+  placeCount: 0,
 };
 
 /** Apply a change to the selected objects, leaving the rest untouched. */
@@ -121,13 +143,78 @@ function documentReducer(state: CanvasState, action: CanvasAction): CanvasState 
         ...state,
         objects: state.objects.map((object) => {
           const patch = byId.get(object.id);
-          return patch ? { ...object, ...patch } : object;
+          return patch ? applyPatch(object, patch) : object;
         }),
       };
     }
 
     case "clear":
       return state.selectedIds.length === 0 ? state : { ...state, selectedIds: [] };
+
+    case "placeAsset": {
+      const placeCount = state.placeCount + 1;
+      // Sized against this sheet, so the same file lands print-ready whether
+      // it is dropped on a 22×12 or a 22×60.
+      const placed = createPlacedAsset(
+        action.asset,
+        sheetInches(state.sheetSize),
+        placeCount,
+        action.at,
+      );
+      return {
+        ...state,
+        objects: [...state.objects, placed],
+        // Placing something is the start of working on it, so it arrives
+        // selected and the inspector is already describing it.
+        selectedIds: [placed.id],
+        placeCount,
+      };
+    }
+
+    case "addText": {
+      const text = createTextObject(sheetInches(state.sheetSize), action.id);
+      return {
+        ...state,
+        objects: [...state.objects, text],
+        selectedIds: [text.id],
+      };
+    }
+
+    /**
+     * Rename from the layer list.
+     *
+     * A text layer is named by its own first line, so renaming one edits the
+     * text rather than a label beside it — otherwise the list and the sheet
+     * would each hold a name and the two would drift.
+     */
+    case "renameObject":
+      return {
+        ...state,
+        objects: state.objects.map((object) => {
+          if (object.id !== action.id) return object;
+          return object.kind === "text"
+            ? { ...object, text: renameFirstLine(object.text ?? "", action.name) }
+            : { ...object, name: action.name };
+        }),
+      };
+
+    /**
+     * Geometry the renderer measured, for objects that size themselves.
+     *
+     * Never an edit: this is the editor catching up with what text already
+     * occupies, so it must not land on the undo stack — see `historyPolicy`.
+     */
+    case "syncMetrics": {
+      if (action.updates.length === 0) return state;
+      const byId = new Map(action.updates.map((update) => [update.id, update.patch]));
+      return {
+        ...state,
+        objects: state.objects.map((object) => {
+          const patch = byId.get(object.id);
+          return patch ? applyPatch(object, patch) : object;
+        }),
+      };
+    }
 
     case "addMockArtwork":
       return {
@@ -195,13 +282,13 @@ function documentReducer(state: CanvasState, action: CanvasAction): CanvasState 
       }));
 
     case "patch":
-      return patchSelected(state, (object) => ({ ...object, ...action.patch }));
+      return patchSelected(state, (object) => applyPatch(object, action.patch));
 
     case "patchObject":
       return {
         ...state,
         objects: state.objects.map((object) =>
-          object.id === action.id ? { ...object, ...action.patch } : object,
+          object.id === action.id ? applyPatch(object, action.patch) : object,
         ),
       };
 
@@ -262,9 +349,22 @@ function documentReducer(state: CanvasState, action: CanvasAction): CanvasState 
   }
 }
 
-/** Stable tag for a patch, so edits to the same property collapse together. */
-const patchTag = (patch: Partial<CanvasObject>) =>
-  Object.keys(patch).sort().join(",");
+/**
+ * Stable tag for a patch, so edits to the same property collapse together.
+ *
+ * Typography is expanded rather than counted as one key: a font change
+ * followed by a size change are two decisions and have to be two undo steps,
+ * while dragging a single slider stays one.
+ */
+const patchTag = (patch: CanvasObjectPatch) =>
+  Object.entries(patch)
+    .map(([key, value]) =>
+      key === "typography" && value
+        ? `typography.${Object.keys(value).sort().join(".")}`
+        : key,
+    )
+    .sort()
+    .join(",");
 
 /**
  * Whether an action belongs in history, and whether it continues a run.
@@ -281,6 +381,16 @@ function historyPolicy(action: CanvasAction): HistoryPolicy {
     case "setSelection":
     case "clear":
       return { record: false };
+
+    /* Text measured by the renderer. Not an edit — the user changed the font
+       or the content, and this is only the box catching up with it. Recording
+       it would put a second, meaningless step behind every real one. */
+    case "syncMetrics":
+      return { record: false };
+
+    // A rename is one continuous edit however many keystrokes it took.
+    case "renameObject":
+      return { record: true, coalesceTag: `rename:${action.id}` };
 
     /* Continuous edits — a slider drag or a held arrow key dispatches many
        times, and all of it should collapse into one step. */
@@ -322,6 +432,11 @@ function editorReducer(
       return redo(state);
     case "clearHistory":
       return clearHistory(state);
+    case "replaceDocument":
+      // A fresh stack, not an entry on the old one: the restored design has no
+      // shared past with whatever was open, so there is nothing to step back
+      // through.
+      return initHistory({ ...action.document, selectedIds: [] });
     default:
       return record(state, documentReducer(state.present, action), historyPolicy(action));
   }
@@ -343,6 +458,33 @@ export interface CanvasInteraction {
   /** Apply per-object changes in one go, e.g. after dragging a selection. */
   patchObjects: (updates: ObjectPatch[]) => void;
 
+  /**
+   * Put a library asset on the sheet, centred on `at` or on the sheet itself.
+   *
+   * One undo step: the placement arrives selected, and undoing it takes the
+   * artwork off the sheet without touching the library it came from.
+   */
+  placeAsset: (asset: Asset, at?: PlacementPoint) => void;
+  /**
+   * Add a text layer at the centre of the sheet, selected and ready to type
+   * into. One undo step; the typing that follows is another.
+   */
+  addText: () => void;
+  /**
+   * The text layer waiting to be edited, or `null`.
+   *
+   * Deliberately outside the document: it is a one-shot instruction to the
+   * canvas, not a fact about the design, and undoing back past a creation must
+   * not drop the user into an editor again.
+   */
+  pendingEditId: string | null;
+  /** Called by the canvas once it has put the caret in that layer. */
+  clearPendingEdit: () => void;
+  /**
+   * Geometry the renderer measured for objects that size themselves.
+   * Never recorded — see the history policy.
+   */
+  syncMetrics: (updates: ObjectPatch[]) => void;
   /** Drop the mock artwork onto the sheet. */
   addMockArtwork: () => void;
   duplicateSelection: () => void;
@@ -355,11 +497,16 @@ export interface CanvasInteraction {
    * inspector edits through — one entry point rather than an action per
    * property, and the same shape a canvas-backed implementation would expose.
    */
-  patchSelection: (patch: Partial<CanvasObject>) => void;
+  patchSelection: (patch: CanvasObjectPatch) => void;
 
   /* --------------------------- Per-object edits -------------------------- */
   /** Change one object regardless of what is selected — the layer list's path. */
-  patchObject: (id: string, patch: Partial<CanvasObject>) => void;
+  patchObject: (id: string, patch: CanvasObjectPatch) => void;
+  /**
+   * Rename one object. Distinct from `patchObject` because a text layer has no
+   * name of its own — renaming one rewrites its first line.
+   */
+  renameObject: (id: string, name: string) => void;
   setObjectHidden: (id: string, hidden: boolean) => void;
   deleteObject: (id: string) => void;
   /**
@@ -373,6 +520,18 @@ export interface CanvasInteraction {
   /** Sheet size preset. Part of the document, so it undoes with everything else. */
   sheetSize: string;
   setSheetSize: (sheetSize: string) => void;
+
+  /* ---------------------------- Persistence ----------------------------- */
+  /**
+   * The design, without the parts that describe looking at it.
+   *
+   * Selection is left out deliberately: it is the one piece of `CanvasState`
+   * that changes without the design changing, so keeping it out means anything
+   * watching this object for changes is watching real edits only.
+   */
+  document: DesignDocument;
+  /** Swap in a restored design, discarding whatever was open and its history. */
+  replaceDocument: (document: DesignDocument) => void;
 
   /* ------------------------------ History ------------------------------- */
   undo: () => void;
@@ -397,6 +556,18 @@ export function useCanvasInteraction(): CanvasInteraction {
   );
   const state = history.present;
 
+  /**
+   * The text layer the canvas should drop a caret into next.
+   *
+   * Outside the reducer because it is an instruction with a lifetime of one
+   * render, not part of the design — putting it in the document would make it
+   * undoable, and undoing into an open text editor is nobody's intent.
+   */
+  const [pendingEditId, setPendingEditId] = React.useState<string | null>(null);
+
+  /** Text ids are per-session and never reused, so a counter is enough. */
+  const textCount = React.useRef(0);
+
   const selectedObjects = React.useMemo(
     () => state.objects.filter((object) => state.selectedIds.includes(object.id)),
     [state.objects, state.selectedIds],
@@ -405,6 +576,23 @@ export function useCanvasInteraction(): CanvasInteraction {
   const selectionBox = React.useMemo(
     () => boundingBox(selectedObjects),
     [selectedObjects],
+  );
+
+  /**
+   * Identity changes only when the design does.
+   *
+   * `state.objects` is a fresh array after every edit and the same array after
+   * a selection change, which is what lets autosave key off this and stay out
+   * of the way of clicking around.
+   */
+  const document = React.useMemo<DesignDocument>(
+    () => ({
+      objects: state.objects,
+      sheetSize: state.sheetSize,
+      copyCount: state.copyCount,
+      placeCount: state.placeCount,
+    }),
+    [state.objects, state.sheetSize, state.copyCount, state.placeCount],
   );
 
   const selectObject = React.useCallback(
@@ -429,6 +617,23 @@ export function useCanvasInteraction(): CanvasInteraction {
       (updates: ObjectPatch[]) => dispatch({ type: "patchObjects", updates }),
       [],
     ),
+    placeAsset: React.useCallback(
+      (asset: Asset, at?: PlacementPoint) =>
+        dispatch({ type: "placeAsset", asset, at }),
+      [],
+    ),
+    addText: React.useCallback(() => {
+      textCount.current += 1;
+      const id = `text-${textCount.current}`;
+      dispatch({ type: "addText", id });
+      setPendingEditId(id);
+    }, []),
+    pendingEditId,
+    clearPendingEdit: React.useCallback(() => setPendingEditId(null), []),
+    syncMetrics: React.useCallback(
+      (updates: ObjectPatch[]) => dispatch({ type: "syncMetrics", updates }),
+      [],
+    ),
     addMockArtwork: React.useCallback(
       () => dispatch({ type: "addMockArtwork" }),
       [],
@@ -451,13 +656,17 @@ export function useCanvasInteraction(): CanvasInteraction {
       [],
     ),
     patchSelection: React.useCallback(
-      (patch: Partial<CanvasObject>) => dispatch({ type: "patch", patch }),
+      (patch: CanvasObjectPatch) => dispatch({ type: "patch", patch }),
       [],
     ),
 
     patchObject: React.useCallback(
-      (id: string, patch: Partial<CanvasObject>) =>
+      (id: string, patch: CanvasObjectPatch) =>
         dispatch({ type: "patchObject", id, patch }),
+      [],
+    ),
+    renameObject: React.useCallback(
+      (id: string, name: string) => dispatch({ type: "renameObject", id, name }),
       [],
     ),
     setObjectHidden: React.useCallback(
@@ -483,6 +692,19 @@ export function useCanvasInteraction(): CanvasInteraction {
       (sheetSize: string) => dispatch({ type: "setSheetSize", sheetSize }),
       [],
     ),
+
+    document,
+    replaceDocument: React.useCallback((next: DesignDocument) => {
+      // Text ids come from a counter, not from the document, so a restored
+      // design has to push it past whatever it already contains — otherwise
+      // the next "Add text" would reuse an id that is already on the sheet.
+      textCount.current = next.objects.reduce((highest, object) => {
+        const match = /^text-(\d+)$/.exec(object.id);
+        return match ? Math.max(highest, Number(match[1])) : highest;
+      }, textCount.current);
+
+      dispatch({ type: "replaceDocument", document: next });
+    }, []),
 
     undo: React.useCallback(() => dispatch({ type: "undo" }), []),
     redo: React.useCallback(() => dispatch({ type: "redo" }), []),

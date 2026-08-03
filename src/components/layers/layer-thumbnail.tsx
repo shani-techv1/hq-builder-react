@@ -2,6 +2,7 @@
 
 import { Group, Star, Type } from "lucide-react";
 
+import { useEditorState } from "@/components/editor/editor-state";
 import type { CanvasObject } from "@/lib/canvas-objects";
 import { cn } from "@/lib/utils";
 
@@ -13,15 +14,31 @@ export interface LayerThumbnailProps {
 /**
  * A small preview of what a layer is.
  *
- * Raster layers show their artwork; everything else shows the glyph for its
+ * Layers with real artwork show it; everything else shows the glyph for its
  * kind, because a gradient square would say less about a text layer than the
  * letter does.
+ *
+ * The asset is read from the editor rather than passed down, so the list and
+ * the row in between stay unaware that layers have files behind them at all.
  */
 export function LayerThumbnail({ object, className }: LayerThumbnailProps) {
+  const { findAsset } = useEditorState();
+  const thumbnail = findAsset(object.assetId)?.thumbnail;
+
   const base = cn(
     "grid size-8 shrink-0 place-items-center overflow-hidden rounded-md border border-border bg-muted",
     className,
   );
+
+  if (thumbnail) {
+    return (
+      <span className={cn(base, "bg-checkerboard")}>
+        {/* eslint-disable-next-line @next/next/no-img-element --
+            a locally generated data URL. */}
+        <img src={thumbnail} alt="" className="size-full object-contain" />
+      </span>
+    );
+  }
 
   if (object.kind === "image") {
     const fill = object.fill;

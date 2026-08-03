@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 export interface AssetGridProps {
   assets: Asset[];
   onOpen: (id: string) => void;
+  onPlace: (id: string) => void;
   onRename: (id: string, name: string) => void;
   onDuplicate: (id: string) => void;
   onToggleFavorite: (id: string) => void;
@@ -26,6 +27,7 @@ export interface AssetGridProps {
 export function AssetGrid({
   assets,
   onOpen,
+  onPlace,
   onRename,
   onDuplicate,
   onToggleFavorite,
@@ -40,6 +42,7 @@ export function AssetGrid({
             key={asset.id}
             asset={asset}
             onOpen={() => onOpen(asset.id)}
+            onPlace={() => onPlace(asset.id)}
             onRename={(name) => onRename(asset.id, name)}
             onDuplicate={() => onDuplicate(asset.id)}
             onToggleFavorite={() => onToggleFavorite(asset.id)}

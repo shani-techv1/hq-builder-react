@@ -2,7 +2,12 @@
 
 import * as React from "react";
 
-import { EditorStateProvider } from "@/components/editor/editor-state";
+import {
+  EditorStateProvider,
+  useEditorState,
+} from "@/components/editor/editor-state";
+import { DraftRecoveryDialog } from "@/components/editor/draft-recovery-dialog";
+import { DesignFileMenu } from "@/components/editor/design-file-menu";
 import { Workspace } from "@/components/editor/workspace";
 import { EditorHeader } from "@/components/header/editor-header";
 import { InspectorPanel } from "@/components/inspector/inspector-panel";
@@ -24,6 +29,25 @@ const DEFAULT_DESIGN_NAME = "Untitled gang sheet";
  * without that, `activePanel` dropping to `null` would blank the panel's
  * contents a frame before it finished sliding away.
  */
+/**
+ * The startup prompt.
+ *
+ * Its own component because it has to sit inside the provider to read the
+ * recovery state, and the shell above it is what the provider wraps.
+ */
+function DraftRecoveryGate() {
+  const { recovery } = useEditorState();
+
+  return (
+    <DraftRecoveryDialog
+      open={recovery.status === "prompting"}
+      draft={recovery.draft}
+      onContinue={recovery.continueDraft}
+      onStartNew={recovery.startNew}
+    />
+  );
+}
+
 export function EditorShell() {
   const {
     activePanel,
@@ -51,14 +75,23 @@ export function EditorShell() {
       ref={rootRef}
       className="flex h-dvh w-full flex-col overflow-hidden bg-canvas"
     >
-      <EditorHeader
+      {/* The provider wraps the header too, so the file menu can reach the
+          design it is about to export. It renders no element of its own. */}
+      <EditorStateProvider
+        onDesignChange={markDirty}
         designName={designName}
-        onDesignNameChange={handleDesignNameChange}
-        saveStatus={status}
-        onSave={save}
-      />
+        onDesignNameChange={setDesignName}
+      >
+        <EditorHeader
+          designName={designName}
+          onDesignNameChange={handleDesignNameChange}
+          saveStatus={status}
+          onSave={save}
+          actions={<DesignFileMenu />}
+        />
 
-      <EditorStateProvider onDesignChange={markDirty}>
+        <DraftRecoveryGate />
+
         <div className="flex min-h-0 flex-1">
           <div ref={sidebarRef} className="h-full shrink-0">
             <Sidebar

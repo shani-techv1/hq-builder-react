@@ -18,18 +18,19 @@ import { PropertyRow } from "@/components/inspector/property-row";
 import { PropertySlider } from "@/components/inspector/property-slider";
 import { QuickActions } from "@/components/inspector/quick-actions";
 import type { CanvasInteraction } from "@/hooks/use-canvas-interaction";
-import type { CanvasObject, CanvasTypography } from "@/lib/canvas-objects";
-import { FONT_FAMILIES, FONT_WEIGHTS, TEXT_SWATCHES } from "@/lib/inspector";
+import {
+  DEFAULT_TYPOGRAPHY,
+  MIN_FONT_SIZE,
+  type CanvasObject,
+  type CanvasTypography,
+} from "@/lib/canvas-objects";
+import {
+  FONT_FAMILY_OPTIONS,
+  TEXT_SWATCHES,
+  fontWeightOptions,
+} from "@/lib/inspector";
+import { findFontFamily, nearestWeight } from "@/lib/fonts";
 import { cn } from "@/lib/utils";
-
-const DEFAULT_TYPOGRAPHY: CanvasTypography = {
-  fontFamily: "sans",
-  fontWeight: 700,
-  fontSize: 48,
-  letterSpacing: 0,
-  lineHeight: 1.2,
-  align: "left",
-};
 
 export interface TextInspectorProps {
   object: CanvasObject;
@@ -46,24 +47,29 @@ export interface TextInspectorProps {
 export function TextInspector({ object, canvas }: TextInspectorProps) {
   const type = object.typography ?? DEFAULT_TYPOGRAPHY;
   const locked = object.locked;
-
-  /** Typography is stored as one object, so every edit merges into it. */
-  const setType = (patch: Partial<CanvasTypography>) =>
-    canvas.patchSelection({ typography: { ...type, ...patch } });
+  const weights = fontWeightOptions(type.fontFamily);
 
   /**
-   * The object's box is what the canvas scales to, so changing the font size
-   * has to grow the box by the same ratio — otherwise larger type would just
-   * be squashed back into the old footprint.
+   * Only the property that changed is sent. The reducer merges it, and history
+   * reads the key to tell a font change from a size change — sending the whole
+   * typography object would fold every type edit into one undo step.
    */
-  const setFontSize = (fontSize: number) => {
-    const ratio = fontSize / (type.fontSize || 1);
-    canvas.patchSelection({
-      typography: { ...type, fontSize },
-      width: object.width * ratio,
-      height: object.height * ratio,
+  const setType = (patch: Partial<CanvasTypography>) =>
+    canvas.patchSelection({ typography: patch });
+
+  /**
+   * Switching family carries the weight across to the nearest one the new face
+   * actually ships — a display font has no extrabold, and leaving the old
+   * value would ask the browser to fake one.
+   *
+   * Both properties travel in one patch, so changing the font stays one undo
+   * step rather than a font change with a weight change hidden behind it.
+   */
+  const setFontFamily = (fontFamily: string) =>
+    setType({
+      fontFamily,
+      fontWeight: nearestWeight(findFontFamily(fontFamily), type.fontWeight),
     });
-  };
 
   return (
     <>
@@ -112,24 +118,33 @@ export function TextInspector({ object, canvas }: TextInspectorProps) {
       >
         <PropertyDropdown
           label="Family"
+          layout="stack"
           value={type.fontFamily}
-          onChange={(fontFamily) => setType({ fontFamily })}
-          options={FONT_FAMILIES}
+          onChange={setFontFamily}
+          options={FONT_FAMILY_OPTIONS}
           disabled={locked}
         />
         <PropertyDropdown
           label="Weight"
           value={String(type.fontWeight)}
           onChange={(weight) => setType({ fontWeight: Number(weight) })}
-          options={FONT_WEIGHTS}
-          disabled={locked}
+          options={weights}
+          // A face with one weight has nothing to choose between.
+          disabled={locked || weights.length < 2}
+          tooltip={
+            weights.length < 2
+              ? `${findFontFamily(type.fontFamily).label} ships a single weight.`
+              : undefined
+          }
         />
+        {/* No box adjustment: text is measured from its font, and the canvas
+            reports the size it turned out to be. */}
         <PropertyInput
           label="Size"
           value={type.fontSize}
-          onChange={setFontSize}
+          onChange={(fontSize) => setType({ fontSize })}
           unit="px"
-          min={4}
+          min={MIN_FONT_SIZE}
           max={400}
           disabled={locked}
         />
@@ -162,6 +177,29 @@ export function TextInspector({ object, canvas }: TextInspectorProps) {
             ]}
           />
         </PropertyRow>
+      </InspectorSection>
+
+      <InspectorSection
+        id="text-transform"
+        title="Transform"
+        summary={`${object.rotation}°`}
+      >
+        <PropertyInput
+          label="Rotation"
+          value={object.rotation}
+          onChange={(rotation) => canvas.patchSelection({ rotation })}
+          unit="°"
+          min={-360}
+          max={360}
+          disabled={locked}
+        />
+
+        <PropertySlider
+          label="Opacity"
+          value={object.opacity}
+          onChange={canvas.setSelectionOpacity}
+          disabled={locked}
+        />
       </InspectorSection>
 
       <InspectorSection id="text-spacing" title="Spacing" defaultOpen={false}>

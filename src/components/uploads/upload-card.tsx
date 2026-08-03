@@ -5,12 +5,13 @@ import { motion } from "framer-motion";
 import { CloudUpload } from "lucide-react";
 
 import { PrimaryButton } from "@/components/common/primary-button";
-import { MAX_UPLOAD_LABEL, SUPPORTED_FILE_TYPES } from "@/lib/assets";
+import { useFilePicker } from "@/hooks/use-file-picker";
+import { MAX_UPLOAD_LABEL, SUPPORTED_FILE_TYPES } from "@/lib/asset-upload";
 import { cn } from "@/lib/utils";
 
 export interface UploadCardProps {
-  /** Fired when the drop zone or its button is activated. */
-  onBrowse?: () => void;
+  /** Files chosen from the dialog, or dropped onto the zone. */
+  onFiles: (files: File[]) => void;
   /**
    * `full` is the hero drop zone shown to an empty library; `compact` is the
    * slim button it collapses into once there is artwork to look at.
@@ -22,22 +23,23 @@ export interface UploadCardProps {
 /**
  * The drag-and-drop drop zone at the top of the Graphics panel.
  *
- * Drag events are tracked purely to drive the hover treatment — this phase has
- * no upload pipeline, so a dropped file is acknowledged visually and nothing
- * else. `dragDepth` counts enter/leave pairs because dragging across a child
- * element fires `dragleave` on the parent, which would otherwise flicker the
- * active state off and on.
+ * `dragDepth` counts enter/leave pairs because dragging across a child element
+ * fires `dragleave` on the parent, which would otherwise flicker the active
+ * state off and on.
  *
- * Both variants share that drag handling, so dropping onto the collapsed
- * button behaves exactly like dropping onto the full card.
+ * Both variants share the drag handling and the file dialog, so dropping onto
+ * the collapsed button behaves exactly like dropping onto the full card.
+ * Validation belongs to the library, not here — this hands over whatever was
+ * dropped and lets the panel report what could not be used.
  */
 export function UploadCard({
-  onBrowse,
+  onFiles,
   variant = "full",
   className,
 }: UploadCardProps) {
   const [isDragging, setIsDragging] = React.useState(false);
   const dragDepth = React.useRef(0);
+  const picker = useFilePicker(onFiles);
 
   const handleDragEnter = (event: React.DragEvent) => {
     event.preventDefault();
@@ -55,6 +57,9 @@ export function UploadCard({
     event.preventDefault();
     dragDepth.current = 0;
     setIsDragging(false);
+
+    const files = Array.from(event.dataTransfer.files);
+    if (files.length > 0) onFiles(files);
   };
 
   const dragHandlers = {
@@ -76,7 +81,8 @@ export function UploadCard({
           className,
         )}
       >
-        <PrimaryButton icon={CloudUpload} onClick={onBrowse} size="md">
+        <input {...picker.inputProps} />
+        <PrimaryButton icon={CloudUpload} onClick={picker.open} size="md">
           {isDragging ? "Drop to upload" : "Upload artwork"}
         </PrimaryButton>
       </div>
@@ -118,9 +124,11 @@ export function UploadCard({
         </p>
       </motion.div>
 
+      <input {...picker.inputProps} />
+
       <PrimaryButton
         icon={CloudUpload}
-        onClick={onBrowse}
+        onClick={picker.open}
         className="mt-4"
         size="md"
       >

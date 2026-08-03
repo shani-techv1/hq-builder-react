@@ -7,7 +7,11 @@ import { Eye, EyeOff, GripVertical, Lock, Unlock } from "lucide-react";
 import { LayerContextMenu } from "@/components/layers/layer-context-menu";
 import { InlineRenameInput } from "@/components/common/inline-rename-input";
 import { LayerThumbnail } from "@/components/layers/layer-thumbnail";
-import { KIND_LABELS, type CanvasObject } from "@/lib/canvas-objects";
+import {
+  KIND_LABELS,
+  layerLabel,
+  type CanvasObject,
+} from "@/lib/canvas-objects";
 import { cn } from "@/lib/utils";
 
 export interface LayerRowProps {
@@ -49,6 +53,9 @@ export function LayerRow({
   const [isRenaming, setIsRenaming] = React.useState(false);
   const dragControls = useDragControls();
 
+  // A text layer has no name of its own — it is called by what it says.
+  const label = layerLabel(object);
+
   return (
     <Reorder.Item
       value={object}
@@ -84,7 +91,7 @@ export function LayerRow({
         >
           <button
             type="button"
-            aria-label={`Reorder ${object.name}`}
+            aria-label={`Reorder ${label}`}
             onPointerDown={(event) => {
               event.stopPropagation();
               dragControls.start(event);
@@ -104,7 +111,7 @@ export function LayerRow({
             {isRenaming ? (
               <InlineRenameInput
                 label="Layer name"
-                value={object.name}
+                value={label}
                 onCommit={(name) => {
                   onRename(object.id, name);
                   setIsRenaming(false);
@@ -114,7 +121,7 @@ export function LayerRow({
             ) : (
               <>
                 <p className="truncate text-[12px] font-semibold text-foreground">
-                  {object.name}
+                  {label}
                 </p>
                 <p className="truncate text-[10px] text-muted-foreground">
                   {KIND_LABELS[object.kind]}
@@ -124,7 +131,7 @@ export function LayerRow({
           </div>
 
           <RowToggle
-            label={object.locked ? `Unlock ${object.name}` : `Lock ${object.name}`}
+            label={object.locked ? `Unlock ${label}` : `Lock ${label}`}
             active={object.locked}
             onClick={() => onToggleLocked(object.id)}
           >
@@ -136,7 +143,7 @@ export function LayerRow({
           </RowToggle>
 
           <RowToggle
-            label={object.hidden ? `Show ${object.name}` : `Hide ${object.name}`}
+            label={object.hidden ? `Show ${label}` : `Hide ${label}`}
             active={object.hidden ?? false}
             onClick={() => onToggleHidden(object.id)}
           >

@@ -1,7 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { Copy, Expand, Pencil, Star, StarOff, Trash2 } from "lucide-react";
+import {
+  Copy,
+  Expand,
+  Pencil,
+  PlusSquare,
+  Star,
+  StarOff,
+  Trash2,
+} from "lucide-react";
 
 import {
   DropdownMenu,
@@ -17,6 +25,8 @@ export interface AssetContextMenuProps {
   /** The trigger — usually the card's "More" button. */
   children: React.ReactElement;
   onPreview: () => void;
+  /** Put the asset on the sheet — the discoverable form of double-clicking. */
+  onPlace: () => void;
   onRename: () => void;
   onDuplicate: () => void;
   onToggleFavorite: () => void;
@@ -28,6 +38,7 @@ export function AssetContextMenu({
   asset,
   children,
   onPreview,
+  onPlace,
   onRename,
   onDuplicate,
   onToggleFavorite,
@@ -38,6 +49,10 @@ export function AssetContextMenu({
       <DropdownMenuTrigger render={children} />
 
       <DropdownMenuContent align="end" sideOffset={6} className="w-48">
+        <DropdownMenuItem className="px-2 py-1.5" onClick={onPlace}>
+          <PlusSquare aria-hidden />
+          Place on sheet
+        </DropdownMenuItem>
         <DropdownMenuItem className="px-2 py-1.5" onClick={onPreview}>
           <Expand aria-hidden />
           Preview

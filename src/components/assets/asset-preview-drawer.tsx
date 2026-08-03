@@ -2,7 +2,15 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, Check, Minus, Pencil, Star, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  Minus,
+  Pencil,
+  PlusSquare,
+  Star,
+  Trash2,
+} from "lucide-react";
 
 import { InlineRenameInput } from "@/components/common/inline-rename-input";
 import { PrimaryButton } from "@/components/common/primary-button";
@@ -23,6 +31,8 @@ export interface AssetPreviewDrawerProps {
   assets: Asset[];
   onClose: () => void;
   onOpenAsset: (id: string) => void;
+  /** Put the asset on the sheet, centred. */
+  onPlace: () => void;
   onRename: (name: string) => void;
   onToggleFavorite: () => void;
   onDelete: () => void;
@@ -40,6 +50,7 @@ export function AssetPreviewDrawer({
   assets,
   onClose,
   onOpenAsset,
+  onPlace,
   onRename,
   onToggleFavorite,
   onDelete,
@@ -115,9 +126,12 @@ export function AssetPreviewDrawer({
             "bg-checkerboard relative aspect-4/3 overflow-hidden rounded-card border border-border shadow-card",
           )}
         >
-          <span
-            aria-hidden
-            className={cn("absolute inset-3 rounded-lg bg-linear-to-br", asset.swatch)}
+          {/* eslint-disable-next-line @next/next/no-img-element --
+              a locally generated data URL: nothing for the optimiser to do. */}
+          <img
+            src={asset.thumbnail}
+            alt={asset.name}
+            className="absolute inset-3 size-[calc(100%-1.5rem)] object-contain"
           />
           <span className="absolute left-2 top-2 rounded-md bg-card/90 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-foreground shadow-soft backdrop-blur-sm">
             {asset.format}
@@ -164,12 +178,14 @@ export function AssetPreviewDrawer({
                     "focus-visible:ring-3 focus-visible:ring-ring/40",
                   )}
                 >
-                  <span
-                    aria-hidden
+                  {/* eslint-disable-next-line @next/next/no-img-element --
+                      a locally generated data URL. */}
+                  <img
+                    src={item.thumbnail}
+                    alt=""
                     className={cn(
-                      "block aspect-square bg-linear-to-br transition-transform duration-300",
-                      "group-hover/related:scale-105",
-                      item.swatch,
+                      "bg-checkerboard block aspect-square w-full object-contain p-1",
+                      "transition-transform duration-300 group-hover/related:scale-105",
                     )}
                   />
                   <span className="block truncate px-1.5 py-1 text-[9.5px] font-semibold text-muted-foreground">
@@ -182,7 +198,12 @@ export function AssetPreviewDrawer({
         ) : null}
       </div>
 
-      <footer className="shrink-0 border-t border-border px-4 py-3">
+      <footer className="shrink-0 space-y-2 border-t border-border px-4 py-3">
+        {/* The reason the drawer is open at all, so it leads. */}
+        <PrimaryButton icon={PlusSquare} size="md" onClick={onPlace}>
+          Place on sheet
+        </PrimaryButton>
+
         <div className="flex items-center gap-2">
           <PrimaryButton
             icon={Pencil}

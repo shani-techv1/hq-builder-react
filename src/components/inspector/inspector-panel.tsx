@@ -27,7 +27,7 @@ type InspectorState = "canvas" | "image" | "text" | "multi";
  * selections never shifts the workspace beside it.
  */
 export function InspectorPanel({ className }: { className?: string }) {
-  const { canvas, settings } = useEditorState();
+  const { canvas, settings, findAsset } = useEditorState();
   const { selectedObjects } = canvas;
 
   const state: InspectorState =
@@ -114,6 +114,7 @@ export function InspectorPanel({ className }: { className?: string }) {
               ) : (
                 <ImageInspector
                   object={primary}
+                  asset={findAsset(primary.assetId)}
                   canvas={canvas}
                   settings={settings}
                 />
