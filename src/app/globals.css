@@ -1,26 +1,174 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* App surfaces — the workspace behind the panels, and the tinted blue used
+     for hover / selected / illustrative states throughout the editor. */
+  --color-canvas: var(--canvas);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-softer: var(--primary-softer);
+
+  /* 12px is the product's base radius; cards step up to 16px. */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-card: 16px;
+
+  /* Soft, low-contrast elevation — nothing in the UI uses a hard shadow. */
+  --shadow-soft: 0 1px 2px 0 rgb(16 24 40 / 0.04), 0 1px 3px 0 rgb(16 24 40 / 0.06);
+  --shadow-card: 0 2px 4px -2px rgb(16 24 40 / 0.04), 0 8px 20px -6px rgb(16 24 40 / 0.08);
+  --shadow-panel: 0 0 0 1px rgb(16 24 40 / 0.03), 12px 0 40px -12px rgb(16 24 40 / 0.14);
+  --shadow-primary: 0 1px 2px 0 rgb(30 136 255 / 0.24), 0 8px 16px -6px rgb(30 136 255 / 0.36);
+  /* The print sheet — lifted clearly off the workspace without a hard edge. */
+  --shadow-sheet: 0 1px 2px 0 rgb(16 24 40 / 0.04), 0 4px 10px -4px rgb(16 24 40 / 0.06),
+    0 20px 44px -16px rgb(16 24 40 / 0.16);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  --radius: 12px;
+
+  --background: #ffffff;
+  --foreground: #1f2937;
+  --card: #ffffff;
+  --card-foreground: #1f2937;
+  --popover: #ffffff;
+  --popover-foreground: #1f2937;
+
+  --primary: #1e88ff;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #1f2937;
+
+  --muted: #f7f9fc;
+  --muted-foreground: #6b7280;
+  --accent: #eaf3ff;
+  --accent-foreground: #1e88ff;
+  --destructive: #e11d48;
+
+  --border: #e5e7eb;
+  --input: #e5e7eb;
+  --ring: #1e88ff;
+
+  /* Slightly warmer and deeper than the panel greys, so a white sheet reads as
+     an object sitting on the workspace rather than as more surface. */
+  --canvas: #f3f5f8;
+  --primary-soft: #eaf3ff;
+  --primary-softer: #f4f9ff;
+}
+
+.dark {
+  --background: #0f1420;
+  --foreground: #e9edf5;
+  --card: #151b28;
+  --card-foreground: #e9edf5;
+  --popover: #151b28;
+  --popover-foreground: #e9edf5;
+
+  --primary: #3d97ff;
+  --primary-foreground: #06131f;
+  --secondary: #1c2433;
+  --secondary-foreground: #e9edf5;
+
+  --muted: #161d2b;
+  --muted-foreground: #98a2b3;
+  --accent: #16273d;
+  --accent-foreground: #7ab8ff;
+  --destructive: #f43f5e;
+
+  --border: #232c3d;
+  --input: #232c3d;
+  --ring: #3d97ff;
+
+  --canvas: #0b0f18;
+  --primary-soft: #14263c;
+  --primary-softer: #101b2b;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-canvas text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+  /* Slim scrollbars inside panels, so a scrolling list never adds visual weight. */
+  .scrollbar-slim {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, var(--foreground) 18%, transparent)
+      transparent;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Workspace texture behind the sheet. Much lighter than `bg-grid-dots`, which
+   is a design aid drawn on top of artwork — this one only has to hint depth. */
+/* The canvas pane still scrolls, but panning is the gesture — a scrollbar
+   would be chrome over the artwork. */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility bg-dot-texture {
+  background-image: radial-gradient(
+    color-mix(in oklch, var(--foreground) 7%, transparent) 1px,
+    transparent 0
+  );
+  background-size: 20px 20px;
+}
+
+/* Transparency checkerboard, shown on the sheet when the background preview
+   is switched off. */
+@utility bg-checkerboard {
+  --checker: color-mix(in oklch, var(--foreground) 7%, transparent);
+  background-image: linear-gradient(45deg, var(--checker) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--checker) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--checker) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--checker) 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+}
+
+@utility bg-grid-dots {
+  background-image: radial-gradient(
+    color-mix(in oklch, var(--foreground) 12%, transparent) 1px,
+    transparent 0
+  );
+  background-size: 22px 22px;
 }

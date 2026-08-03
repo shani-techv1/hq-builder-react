@@ -1,0 +1,51 @@
+"use client";
+
+import { SidebarItem } from "@/components/sidebar/sidebar-item";
+import { NAV_ITEMS, type PanelId } from "@/lib/navigation";
+import { cn } from "@/lib/utils";
+
+export interface SidebarProps {
+  /** Panel currently open, or `null` when everything is closed. */
+  activePanel: PanelId | null;
+  /** Last panel the user opened — kept highlighted after it closes. */
+  rememberedPanel: PanelId | null;
+  onSelect: (id: PanelId) => void;
+  className?: string;
+}
+
+/**
+ * The fixed 80px left rail.
+ *
+ * It never moves: panels slide out from behind it, so this column is the one
+ * stable anchor in the editor.
+ */
+export function Sidebar({
+  activePanel,
+  rememberedPanel,
+  onSelect,
+  className,
+}: SidebarProps) {
+  return (
+    <nav
+      aria-label="Editor tools"
+      className={cn(
+        "relative z-30 flex h-full w-20 shrink-0 flex-col items-center",
+        "border-r border-border bg-card",
+        className,
+      )}
+    >
+      <div className="scrollbar-slim flex w-full flex-1 flex-col items-center gap-1 overflow-y-auto py-3">
+        {NAV_ITEMS.map((item) => (
+          <SidebarItem
+            key={item.id}
+            icon={item.icon}
+            label={item.label}
+            isActive={activePanel === item.id}
+            isRemembered={activePanel === null && rememberedPanel === item.id}
+            onClick={() => onSelect(item.id)}
+          />
+        ))}
+      </div>
+    </nav>
+  );
+}
