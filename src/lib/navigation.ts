@@ -1,10 +1,10 @@
-import { Images, Layers, type LucideIcon } from "lucide-react";
+import { Images, Layers, Sparkles, type LucideIcon } from "lucide-react";
 
 /**
  * Every left-rail destination. The id doubles as the key for the panel that
  * the rail opens, so a nav entry and its panel can never drift apart.
  */
-export type PanelId = "graphics" | "layers";
+export type PanelId = "graphics" | "canva" | "layers";
 
 export interface NavItem {
   id: PanelId;
@@ -24,6 +24,13 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Images,
     title: "Graphics",
     description: "Upload artwork or reuse something you already have.",
+  },
+  {
+    id: "canva",
+    label: "Canva",
+    icon: Sparkles,
+    title: "Canva",
+    description: "Bring a design you already made onto the sheet.",
   },
   {
     id: "layers",

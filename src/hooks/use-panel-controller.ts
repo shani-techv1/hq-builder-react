@@ -17,23 +17,23 @@ export interface PanelController {
   rememberedPanel: PanelId | null;
   /** Open a panel, or close it when it is already the open one. */
   selectPanel: (id: PanelId) => void;
+  /** Open a panel, never closing one — for handing off between panels. */
+  openPanel: (id: PanelId) => void;
   closePanel: () => void;
   /** Attach to the element wrapping the whole editor. */
   rootRef: React.RefObject<HTMLDivElement | null>;
   /** Attach to the sliding panel. */
   panelRef: React.RefObject<HTMLElement | null>;
-  /** Attach to the left rail. */
-  sidebarRef: React.RefObject<HTMLDivElement | null>;
 }
 
 /**
- * Owns which panel is open, and the three ways a panel gets dismissed:
- * pressing Escape, clicking outside it, and clicking its own menu again.
+ * Owns which panel is open, and the ways one gets dismissed: pressing Escape,
+ * and clicking its own menu in the rail again.
  *
- * Outside-click is scoped to `rootRef` on purpose. Popups (selects, tooltips)
- * portal to `document.body`, outside the editor shell — testing containment
- * against the shell means a click on an open dropdown is ignored here rather
- * than tearing the panel down from under it.
+ * The Escape handler is scoped to `rootRef` on purpose. Popups (selects,
+ * tooltips) portal to `document.body`, outside the editor shell — testing
+ * containment against the shell means a keypress belonging to an open dropdown
+ * is left alone rather than tearing the panel down from under it.
  */
 export function usePanelController(): PanelController {
   const [activePanel, setActivePanel] = React.useState<PanelId | null>(null);
@@ -45,11 +45,20 @@ export function usePanelController(): PanelController {
 
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   const panelRef = React.useRef<HTMLElement | null>(null);
-  const sidebarRef = React.useRef<HTMLDivElement | null>(null);
 
   const selectPanel = React.useCallback((id: PanelId) => {
     rememberPanel(id);
     setActivePanel((current) => (current === id ? null : id));
+  }, []);
+
+  /**
+   * Unconditionally open. `selectPanel` toggles, which is right for the rail
+   * and wrong for a panel handing the user on to another one — landing back
+   * on a closed drawer would lose the thing they were being shown.
+   */
+  const openPanel = React.useCallback((id: PanelId) => {
+    rememberPanel(id);
+    setActivePanel(id);
   }, []);
 
   const closePanel = React.useCallback(() => setActivePanel(null), []);
@@ -75,30 +84,24 @@ export function usePanelController(): PanelController {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [activePanel, closePanel]);
 
-  /* Clicking anywhere in the editor that isn't the panel or the rail closes it. */
-  React.useEffect(() => {
-    if (!activePanel) return;
-
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (!rootRef.current?.contains(target)) return;
-      if (panelRef.current?.contains(target)) return;
-      if (sidebarRef.current?.contains(target)) return;
-      closePanel();
-    };
-
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [activePanel, closePanel]);
+  /*
+   * There is deliberately no close-on-outside-click.
+   *
+   * That gesture belongs to a panel that covers the work: clicking away means
+   * "give me back what you are hiding". This panel takes its own column and
+   * hides nothing, so the same click would instead close it every time the
+   * user touched the canvas — including on the way to placing artwork they had
+   * just opened the panel to find. It closes from the rail, its own button, or
+   * Escape.
+   */
 
   return {
     activePanel,
     rememberedPanel,
     selectPanel,
+    openPanel,
     closePanel,
     rootRef,
     panelRef,
-    sidebarRef,
   };
 }

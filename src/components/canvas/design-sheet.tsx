@@ -29,6 +29,8 @@ export interface DesignSheetProps {
   /** Human-readable size, shown on the spec card. */
   sizeLabel: string;
   showBackground: boolean;
+  /** Colour behind the artwork while the background is shown. */
+  backgroundColor: string;
   showGrid: boolean;
   /** Objects and selection state — the canvas renders these, it doesn't own them. */
   interaction: CanvasInteraction;
@@ -63,6 +65,7 @@ export function DesignSheet({
   zoom,
   sizeLabel,
   showBackground,
+  backgroundColor,
   showGrid,
   interaction,
   boundary,
@@ -161,14 +164,20 @@ export function DesignSheet({
     <div
       data-design-sheet
       ref={surfaceRef}
-      style={{ width, height }}
+      style={{
+        width,
+        height,
+        // The colour is a preview of what the transfer is applied to. With the
+        // background off, the checkerboard shows the film as it really is.
+        backgroundColor: showBackground ? backgroundColor : undefined,
+      }}
       onDragOver={handleDragOver}
       onDragLeave={() => setIsDropTarget(false)}
       onDrop={handleDrop}
       className={cn(
         "relative rounded-sm border shadow-sheet transition-colors duration-150",
         isDropTarget ? "border-primary" : "border-border/70",
-        showBackground ? "bg-card" : "bg-checkerboard bg-card",
+        showBackground ? undefined : "bg-checkerboard bg-card",
         className,
       )}
     >

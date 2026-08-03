@@ -22,14 +22,6 @@ import { findNavItem } from "@/lib/navigation";
 const DEFAULT_DESIGN_NAME = "Untitled gang sheet";
 
 /**
- * Composes the editor: the header across the top, the fixed rail beneath it,
- * the drawer that slides out from behind the rail, and the workspace it covers.
- *
- * The drawer keeps rendering the remembered menu while it animates closed —
- * without that, `activePanel` dropping to `null` would blank the panel's
- * contents a frame before it finished sliding away.
- */
-/**
  * The startup prompt.
  *
  * Its own component because it has to sit inside the provider to read the
@@ -48,15 +40,24 @@ function DraftRecoveryGate() {
   );
 }
 
+/**
+ * Composes the editor: the header across the top, then a single row of
+ * columns — the rail, the open panel, the workspace, and the inspector.
+ *
+ * The panel is a column rather than a sheet over the workspace, so opening one
+ * narrows the canvas instead of hiding it. It keeps rendering the remembered
+ * menu while it animates closed; without that, `activePanel` dropping to
+ * `null` would blank its contents a frame before it finished collapsing.
+ */
 export function EditorShell() {
   const {
     activePanel,
     rememberedPanel,
     selectPanel,
+    openPanel,
     closePanel,
     rootRef,
     panelRef,
-    sidebarRef,
   } = usePanelController();
 
   const [designName, setDesignName] = React.useState(DEFAULT_DESIGN_NAME);
@@ -93,7 +94,7 @@ export function EditorShell() {
         <DraftRecoveryGate />
 
         <div className="flex min-h-0 flex-1">
-          <div ref={sidebarRef} className="h-full shrink-0">
+          <div className="h-full shrink-0">
             <Sidebar
               activePanel={activePanel}
               rememberedPanel={rememberedPanel}
@@ -101,27 +102,28 @@ export function EditorShell() {
             />
           </div>
 
+          {/* Between the rail and the workspace, so opening it narrows the
+              canvas rather than covering it. */}
+          <SlidingPanel
+            isOpen={activePanel !== null}
+            label={navItem?.title ?? "Panel"}
+            panelRef={panelRef}
+            contentKey={displayedPanel ?? "none"}
+          >
+            {displayedPanel && navItem ? (
+              <>
+                <PanelHeader
+                  title={navItem.title}
+                  description={navItem.description}
+                  onClose={closePanel}
+                />
+                <PanelContent id={displayedPanel} onOpenPanel={openPanel} />
+              </>
+            ) : null}
+          </SlidingPanel>
+
           <main className="relative min-w-0 flex-1 overflow-hidden">
             <Workspace />
-
-            <SlidingPanel
-              isOpen={activePanel !== null}
-              onClose={closePanel}
-              label={navItem?.title ?? "Panel"}
-              panelRef={panelRef}
-              contentKey={displayedPanel ?? "none"}
-            >
-              {displayedPanel && navItem ? (
-                <>
-                  <PanelHeader
-                    title={navItem.title}
-                    description={navItem.description}
-                    onClose={closePanel}
-                  />
-                  <PanelContent id={displayedPanel} />
-                </>
-              ) : null}
-            </SlidingPanel>
           </main>
 
           {/* Below this width the rail, the left panel and a 380px inspector

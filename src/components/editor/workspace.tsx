@@ -55,6 +55,7 @@ export function Workspace({ className }: WorkspaceProps) {
     setSheetSize,
     showBackground,
     setShowBackground,
+    backgroundColor,
     showGrid,
     setShowGrid,
     snapEnabled,
@@ -200,6 +201,7 @@ export function Workspace({ className }: WorkspaceProps) {
                 zoom={zoom}
                 sizeLabel={sheetLabel}
                 showBackground={showBackground}
+                backgroundColor={backgroundColor}
                 showGrid={showGrid}
                 interaction={canvas}
                 boundary={pane}

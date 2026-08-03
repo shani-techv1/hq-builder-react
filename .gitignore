@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...except the template, which documents what the app needs and carries no
+# real values. Without this the pattern above hides it from the next person.
+!.env.example
 
 # vercel
 .vercel

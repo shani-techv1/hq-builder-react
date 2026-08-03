@@ -22,6 +22,43 @@ export const DEFAULT_SHEET_SIZE = "22x24";
 export const SHEET_FORMATS = ["PNG", "JPG", "SVG"];
 
 /**
+ * Colours the sheet can be previewed against.
+ *
+ * Garment colours, not a palette: the sheet itself prints on transparent film,
+ * so this is standing in for whatever the transfer ends up on. Judging white
+ * artwork against a white sheet tells you nothing — and light type on a dark
+ * shirt is exactly the case that needs checking before an order goes out.
+ *
+ * The colour is a preview and never part of the design, so it is not exported,
+ * not saved into a draft, and not on the undo stack.
+ */
+export interface SheetBackground {
+  value: string;
+  label: string;
+}
+
+export const SHEET_BACKGROUNDS: SheetBackground[] = [
+  { value: "#ffffff", label: "White" },
+  { value: "#e7e5e4", label: "Heather grey" },
+  { value: "#d6d3d1", label: "Ash" },
+  { value: "#e8dcc8", label: "Natural" },
+  { value: "#fcd34d", label: "Gold" },
+  { value: "#f97316", label: "Orange" },
+  { value: "#dc2626", label: "Red" },
+  { value: "#ec4899", label: "Pink" },
+  { value: "#7c3aed", label: "Purple" },
+  { value: "#2563eb", label: "Royal blue" },
+  { value: "#1e3a8a", label: "Navy" },
+  { value: "#15803d", label: "Kelly green" },
+  { value: "#166534", label: "Forest" },
+  { value: "#78350f", label: "Brown" },
+  { value: "#44403c", label: "Charcoal" },
+  { value: "#000000", label: "Black" },
+];
+
+export const DEFAULT_SHEET_BACKGROUND = SHEET_BACKGROUNDS[0].value;
+
+/**
  * Fixed production specs shown on the sheet's spec card. Constants rather than
  * per-preset values because they describe the print process, not the sheet.
  */

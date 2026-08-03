@@ -11,7 +11,11 @@ import {
   useDraftRecovery,
   type DraftRecovery,
 } from "@/hooks/use-draft-recovery";
-import { DEFAULT_ZOOM, type MeasurementUnit } from "@/lib/workspace";
+import {
+  DEFAULT_SHEET_BACKGROUND,
+  DEFAULT_ZOOM,
+  type MeasurementUnit,
+} from "@/lib/workspace";
 import type { CanvasObjectPatch, PlacementPoint } from "@/lib/canvas-objects";
 import type { Asset } from "@/lib/assets";
 import {
@@ -36,6 +40,14 @@ export interface WorkspaceSettings {
   setZoom: (value: number) => void;
   showBackground: boolean;
   setShowBackground: (value: boolean) => void;
+  /**
+   * Colour the sheet is previewed against when the background is shown.
+   *
+   * A view setting, like zoom: the sheet prints on transparent film, so this
+   * stands in for the garment and never becomes part of the design.
+   */
+  backgroundColor: string;
+  setBackgroundColor: (value: string) => void;
   showGrid: boolean;
   setShowGrid: (value: boolean) => void;
   snapEnabled: boolean;
@@ -107,6 +119,9 @@ export function EditorStateProvider({
 
   const [zoom, setZoom] = React.useState(DEFAULT_ZOOM);
   const [showBackground, setShowBackground] = React.useState(true);
+  const [backgroundColor, setBackgroundColor] = React.useState(
+    DEFAULT_SHEET_BACKGROUND,
+  );
   const [showGrid, setShowGrid] = React.useState(false);
   const [snapEnabled, setSnapEnabled] = React.useState(true);
   const [unit, setUnit] = React.useState<MeasurementUnit>("in");
@@ -207,6 +222,8 @@ export function EditorStateProvider({
     setZoom,
     showBackground,
     setShowBackground,
+    backgroundColor,
+    setBackgroundColor,
     showGrid,
     setShowGrid,
     snapEnabled,

@@ -110,7 +110,11 @@ export function InspectorPanel({ className }: { className?: string }) {
                   canvas={canvas}
                 />
               ) : state === "text" ? (
-                <TextInspector object={primary} canvas={canvas} />
+                <TextInspector
+                  object={primary}
+                  canvas={canvas}
+                  settings={settings}
+                />
               ) : (
                 <ImageInspector
                   object={primary}

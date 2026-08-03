@@ -2,13 +2,26 @@
 
 import { InspectorSection } from "@/components/inspector/inspector-section";
 import { PropertyDropdown } from "@/components/inspector/property-dropdown";
+import { PropertyRow } from "@/components/inspector/property-row";
 import { PropertyToggle } from "@/components/inspector/property-toggle";
+import { SwatchPicker } from "@/components/inspector/swatch-picker";
 import type { WorkspaceSettings } from "@/components/editor/editor-state";
 import {
   MEASUREMENT_UNITS,
+  SHEET_BACKGROUNDS,
   SHEET_SIZES,
   type MeasurementUnit,
 } from "@/lib/workspace";
+
+/** The collapsed section reads as the state it is actually in. */
+function backgroundLabel(settings: WorkspaceSettings): string {
+  if (!settings.showBackground) return "Transparent";
+  return (
+    SHEET_BACKGROUNDS.find(
+      (colour) => colour.value === settings.backgroundColor,
+    )?.label ?? settings.backgroundColor
+  );
+}
 
 /**
  * The inspector with nothing selected: the sheet's own settings.
@@ -41,13 +54,32 @@ export function CanvasInspector({ settings }: { settings: WorkspaceSettings }) {
         />
       </InspectorSection>
 
-      <InspectorSection id="canvas-guides" title="Guides">
+      <InspectorSection
+        id="canvas-background"
+        title="Background"
+        summary={backgroundLabel(settings)}
+      >
         <PropertyToggle
           label="Background preview"
           value={settings.showBackground}
           onChange={settings.setShowBackground}
-          tooltip="Show the sheet white instead of as transparent film."
+          tooltip="Preview the artwork on a colour instead of as transparent film."
         />
+
+        {/* The sheet prints on clear film, so this is the garment, not the
+            design. Disabled rather than hidden while the preview is off —
+            hiding it would make the toggle look like it removed a feature. */}
+        <PropertyRow label="Colour" layout="stack" disabled={!settings.showBackground}>
+          <SwatchPicker
+            swatches={SHEET_BACKGROUNDS}
+            value={settings.backgroundColor}
+            onChange={settings.setBackgroundColor}
+            disabled={!settings.showBackground}
+          />
+        </PropertyRow>
+      </InspectorSection>
+
+      <InspectorSection id="canvas-guides" title="Guides">
         <PropertyToggle
           label="Grid"
           value={settings.showGrid}
