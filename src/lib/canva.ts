@@ -1,14 +1,14 @@
 /**
  * The editor's side of the Canva integration.
  *
- * The browser holds the Canva access token and presents it on every request;
- * the service forwards it and keeps nothing. That is what makes the connection
- * belong to one person — a token held on the server would be a single token
- * for everybody, and two people using the editor at once would end up sharing
- * whichever account signed in last.
+ * Several Canva accounts can be connected at once, and the tokens for all of
+ * them stay on the server. What the browser holds is an **app session id** —
+ * an opaque handle to the set of accounts it has connected — plus which of
+ * those accounts is currently selected. Neither is a Canva credential.
  *
- * The client *secret* is still server-side. Only the short-lived, read-only
- * access token ever reaches the browser.
+ * That split is what makes multiple accounts possible. A Canva token is a
+ * single value with a single place to live, so a second one overwrote the
+ * first; a session id addresses a list the server can extend indefinitely.
  *
  * The one thing worth knowing about the shapes below: a project's `thumbnail`
  * is Canva's small preview and exists only to fill the picker grid. What gets
@@ -50,44 +50,85 @@ export interface CanvaProjectPage {
   nextCursor: string | null;
 }
 
-/* -------------------------------- The token ------------------------------- */
+/** Whether an account can be used, or needs the user to reconnect it. */
+export type CanvaAccountStatus = "connected" | "expired";
 
 /**
- * `sessionStorage`, not `localStorage`.
+ * One connected Canva account, as the server describes it.
  *
- * The token expires in a few hours anyway, so surviving a browser restart buys
- * very little — and this keeps it out of storage the moment the tab closes,
- * which is the smallest exposure window available without a server session.
+ * Everything here is safe to render. There is no token field, because there is
+ * no token on this side any more.
  */
-const STORAGE_KEY = "design-builder:canva";
-
-export interface CanvaSession {
-  accessToken: string;
-  /** ISO timestamp, or `null` when Canva did not say. */
-  expiresAt: string | null;
+export interface CanvaAccount {
+  /** The server's id for the connection. What everything selects by. */
+  id: string;
+  /** Canva's own id. Stable, and what the server dedupes reconnects against. */
+  canvaUserId: string;
+  teamId: string;
+  /** `null` unless the app was granted `profile:read`. Never guessed. */
+  displayName: string | null;
+  connectedAt: string;
+  status: CanvaAccountStatus;
   scopes: string[];
 }
 
-/** Treat a token as expired slightly early, so it can't die mid-export. */
-const EXPIRY_MARGIN_MS = 30_000;
+/**
+ * What to call an account on screen.
+ *
+ * Canva only returns a display name when the integration holds `profile:read`,
+ * which this one does not request by default — so the fallback has to be
+ * genuinely usable rather than a placeholder. A short slice of Canva's own
+ * account id is enough to tell two connected accounts apart, which is all the
+ * label has to do.
+ */
+export function accountLabel(account: CanvaAccount): string {
+  if (account.displayName) return account.displayName;
+  return `Canva account ${account.canvaUserId.slice(-6)}`;
+}
 
-/* The session is an external store, so React can subscribe to it directly. */
+/* ------------------------------- The session ------------------------------ */
+
+/**
+ * `localStorage`, where the token used to be in `sessionStorage`.
+ *
+ * The trade has changed. This key no longer holds a Canva credential — only a
+ * handle to server-side connections — while the thing it buys is much larger:
+ * connecting three accounts is setup, and setup that evaporates when the tab
+ * closes is setup nobody does twice.
+ *
+ * A new key rather than the old one, so the upgrade cannot read a stored Canva
+ * token as a session id. The old key is deleted on sight, which takes a real
+ * access token out of browser storage.
+ */
+const STORAGE_KEY = "design-builder:canva:v2";
+const LEGACY_STORAGE_KEY = "design-builder:canva";
+
+export interface CanvaStore {
+  /** Opaque handle to the connected accounts. `null` before the first connect. */
+  sessionId: string | null;
+  /** Which account the panel is showing. `null` falls back to the first. */
+  selectedAccountId: string | null;
+}
+
+const EMPTY_STORE: CanvaStore = { sessionId: null, selectedAccountId: null };
+
+/* The store is external to React, so components subscribe to it directly. */
 const listeners = new Set<() => void>();
 
 /** Cached so the snapshot is referentially stable between changes. */
-let snapshot: CanvaSession | null | undefined;
+let snapshot: CanvaStore | undefined;
 
 function announce(): void {
   snapshot = undefined;
   for (const listener of listeners) listener();
 }
 
-export function subscribeToSession(listener: () => void): () => void {
+export function subscribeToStore(listener: () => void): () => void {
   listeners.add(listener);
 
-  // Another tab signing out should not leave this one thinking it is still
-  // connected — though with `sessionStorage` that only fires for duplicates
-  // of this tab.
+  // Another tab disconnecting should not leave this one pointing at accounts
+  // that are gone. With `localStorage` this fires across every tab, which it
+  // did not when the value was per-tab.
   const onStorage = (event: StorageEvent) => {
     if (event.key === STORAGE_KEY || event.key === null) announce();
   };
@@ -99,72 +140,77 @@ export function subscribeToSession(listener: () => void): () => void {
   };
 }
 
-export function getSessionSnapshot(): CanvaSession | null {
-  if (snapshot === undefined) snapshot = readSession();
+export function getStoreSnapshot(): CanvaStore {
+  if (snapshot === undefined) snapshot = readStore();
   return snapshot;
 }
 
-/** Nothing is stored during a server render, so there is no connection. */
-export const getServerSessionSnapshot = (): CanvaSession | null => null;
+/** Nothing is stored during a server render, so nothing is connected. */
+export const getServerStoreSnapshot = (): CanvaStore => EMPTY_STORE;
 
-/** The stored session, or `null` if there isn't a usable one. */
-function readSession(): CanvaSession | null {
-  if (typeof window === "undefined") return null;
+function readStore(): CanvaStore {
+  if (typeof window === "undefined") return EMPTY_STORE;
+
+  try {
+    // Left over from the single-account version, where it held a live Canva
+    // access token. Nothing reads it any more, so it is cleared rather than
+    // left sitting in storage.
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    window.sessionStorage.removeItem(LEGACY_STORAGE_KEY);
+  } catch {
+    // Storage can be blocked outright; there is nothing to clean up if so.
+  }
 
   let raw: string | null = null;
   try {
-    raw = window.sessionStorage.getItem(STORAGE_KEY);
+    raw = window.localStorage.getItem(STORAGE_KEY);
   } catch {
-    // Storage can be blocked outright; that just means "not connected".
-    return null;
+    return EMPTY_STORE;
   }
-  if (!raw) return null;
+  if (!raw) return EMPTY_STORE;
 
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return null;
+    if (typeof parsed !== "object" || parsed === null) return EMPTY_STORE;
 
-    const { accessToken, expiresAt, scopes } = parsed as Partial<CanvaSession>;
-    if (typeof accessToken !== "string" || !accessToken) return null;
-
-    // Dropped rather than returned and refused upstream, so an expired token
-    // and no token look the same to everything above.
-    if (typeof expiresAt === "string") {
-      const deadline = new Date(expiresAt).getTime();
-      if (Number.isFinite(deadline) && Date.now() > deadline - EXPIRY_MARGIN_MS) {
-        // Removed directly rather than through `clearSession`, which would
-        // notify subscribers from inside the snapshot they are reading.
-        try {
-          window.sessionStorage.removeItem(STORAGE_KEY);
-        } catch {
-          // Nothing more to do; the value is unusable either way.
-        }
-        return null;
-      }
-    }
-
+    const { sessionId, selectedAccountId } = parsed as Partial<CanvaStore>;
     return {
-      accessToken,
-      expiresAt: typeof expiresAt === "string" ? expiresAt : null,
-      scopes: Array.isArray(scopes) ? scopes.filter((s) => typeof s === "string") : [],
+      sessionId: typeof sessionId === "string" && sessionId ? sessionId : null,
+      selectedAccountId:
+        typeof selectedAccountId === "string" && selectedAccountId
+          ? selectedAccountId
+          : null,
     };
   } catch {
-    return null;
+    return EMPTY_STORE;
   }
 }
 
-export function writeSession(session: CanvaSession): void {
+function writeStore(next: CanvaStore): void {
   try {
-    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch {
     // Nothing to do — the connection simply won't survive a refresh.
   }
   announce();
 }
 
-export function clearSession(): void {
+export function setSessionId(sessionId: string): void {
+  const current = getStoreSnapshot();
+  if (current.sessionId === sessionId) return;
+
+  // A different session knows nothing about the previous selection.
+  writeStore({ sessionId, selectedAccountId: null });
+}
+
+export function setSelectedAccountId(selectedAccountId: string | null): void {
+  writeStore({ ...getStoreSnapshot(), selectedAccountId });
+}
+
+/** Forget the session entirely — every account with it. */
+export function clearStore(): void {
   try {
-    window.sessionStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(STORAGE_KEY);
   } catch {
     // Already gone, as far as anything here can tell.
   }
@@ -176,9 +222,8 @@ export function clearSession(): void {
 /**
  * A failure the UI can act on.
  *
- * `code` is what matters: a disconnected account needs a "Connect" button, not
- * an error message, and the two are told apart by this rather than by reading
- * the prose.
+ * `code` is what matters, and now carries a distinction that did not exist
+ * before: whether the problem is the whole session or one account of several.
  */
 export class CanvaError extends Error {
   readonly code: string;
@@ -189,9 +234,14 @@ export class CanvaError extends Error {
     this.code = code;
   }
 
-  /** True when the remedy is signing in again rather than retrying. */
-  get needsConnection(): boolean {
+  /** The session is gone. Everything must be connected again. */
+  get needsSession(): boolean {
     return this.code === "NOT_CONNECTED" || this.code === "SESSION_EXPIRED";
+  }
+
+  /** One account lapsed. The others are fine and must be left alone. */
+  get needsAccount(): boolean {
+    return this.code === "ACCOUNT_EXPIRED" || this.code === "ACCOUNT_NOT_FOUND";
   }
 }
 
@@ -213,18 +263,19 @@ async function toError(response: Response): Promise<CanvaError> {
 }
 
 /**
- * The token travels in a header, never in the URL.
+ * The session id travels in a header, never in the URL.
  *
  * Query strings end up in server access logs, in `Referer` headers and in
  * browser history. Headers also survive being embedded in an iframe, where
- * cookies do not.
+ * cookies do not — which is why this is a bearer rather than a cookie now that
+ * there is server-side state to address.
  */
 function authHeaders(): HeadersInit {
-  const session = getSessionSnapshot();
-  if (!session) {
+  const { sessionId } = getStoreSnapshot();
+  if (!sessionId) {
     throw new CanvaError("NOT_CONNECTED", "Connect your Canva account to continue.");
   }
-  return { Authorization: `Bearer ${session.accessToken}` };
+  return { Authorization: `Bearer ${sessionId}` };
 }
 
 const offline = () =>
@@ -233,18 +284,11 @@ const offline = () =>
     "The Canva service isn’t running. Start it and try again.",
   );
 
-export async function listProjects(
-  cursor?: string,
-  signal?: AbortSignal,
-): Promise<CanvaProjectPage> {
-  const path = `/api/canva/projects${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`;
-
+/** Every call goes through here, so failures look the same wherever they start. */
+async function request(path: string, init?: RequestInit): Promise<Response> {
   let response: Response;
   try {
-    response = await fetch(`${CANVA_API_URL}${path}`, {
-      headers: authHeaders(),
-      signal,
-    });
+    response = await fetch(`${CANVA_API_URL}${path}`, init);
   } catch (error) {
     if (error instanceof CanvaError) throw error;
     if (error instanceof DOMException && error.name === "AbortError") throw error;
@@ -252,6 +296,54 @@ export async function listProjects(
   }
 
   if (!response.ok) throw await toError(response);
+  return response;
+}
+
+/* -------------------------------- Accounts -------------------------------- */
+
+/** Every account connected to this session. */
+export async function fetchAccounts(
+  signal?: AbortSignal,
+): Promise<CanvaAccount[]> {
+  const response = await request("/api/canva/accounts", {
+    headers: authHeaders(),
+    signal,
+  });
+  const body = (await response.json()) as { data: { accounts: CanvaAccount[] } };
+  return body.data.accounts;
+}
+
+/**
+ * Disconnect one account, and get back the ones that remain.
+ *
+ * The remaining list comes from the server rather than being filtered locally,
+ * so the panel cannot drift from what is actually connected.
+ */
+export async function disconnectAccount(
+  accountId: string,
+): Promise<CanvaAccount[]> {
+  const response = await request(
+    `/api/canva/accounts/${encodeURIComponent(accountId)}`,
+    { method: "DELETE", headers: authHeaders() },
+  );
+  const body = (await response.json()) as { data: { accounts: CanvaAccount[] } };
+  return body.data.accounts;
+}
+
+/* -------------------------------- Projects -------------------------------- */
+
+export async function listProjects(
+  accountId: string,
+  cursor?: string,
+  signal?: AbortSignal,
+): Promise<CanvaProjectPage> {
+  const query = new URLSearchParams({ accountId });
+  if (cursor) query.set("cursor", cursor);
+
+  const response = await request(`/api/canva/projects?${query.toString()}`, {
+    headers: authHeaders(),
+    signal,
+  });
 
   const body = (await response.json()) as { data: CanvaProjectPage };
   return body.data;
@@ -266,20 +358,15 @@ export async function listProjects(
  *
  * Expect seconds rather than milliseconds — Canva renders exports as a job.
  */
-export async function importProject(projectId: string): Promise<File> {
-  let response: Response;
-  try {
-    response = await fetch(`${CANVA_API_URL}/api/canva/import`, {
-      method: "POST",
-      headers: { ...authHeaders(), "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId }),
-    });
-  } catch (error) {
-    if (error instanceof CanvaError) throw error;
-    throw offline();
-  }
-
-  if (!response.ok) throw await toError(response);
+export async function importProject(
+  accountId: string,
+  projectId: string,
+): Promise<File> {
+  const response = await request("/api/canva/import", {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ accountId, projectId }),
+  });
 
   const blob = await response.blob();
   const title = decodeURIComponent(
@@ -298,9 +385,8 @@ export interface CanvaConnectMessage {
   source: "canva-connect";
   connected: boolean;
   message: string;
-  accessToken?: string;
-  expiresAt?: string | null;
-  scopes?: string[];
+  sessionId?: string;
+  account?: CanvaAccount;
 }
 
 export function isConnectMessage(value: unknown): value is CanvaConnectMessage {
@@ -312,16 +398,48 @@ export function isConnectMessage(value: unknown): value is CanvaConnectMessage {
 }
 
 /**
+ * Ask the service to begin a connection.
+ *
+ * Two steps rather than one because this is the only point where the browser
+ * can say which session the new account belongs to — `window.open` cannot set a
+ * header, and Canva's redirect back is a plain navigation. Without it the
+ * server would have to guess, and guessing is what made this single-account.
+ *
+ * Sends the current session when there is one, so the account joins the others;
+ * the server issues a new session when there is not.
+ */
+export async function startConnect(): Promise<{
+  sessionId: string;
+  authorizeUrl: string;
+}> {
+  const { sessionId } = getStoreSnapshot();
+
+  const response = await request("/api/canva/accounts/connect", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(sessionId ? { Authorization: `Bearer ${sessionId}` } : {}),
+    },
+    body: JSON.stringify({ origin: window.location.origin }),
+  });
+
+  const body = (await response.json()) as {
+    data: { sessionId: string; authorizeUrl: string };
+  };
+  return body.data;
+}
+
+/**
  * Open Canva's consent screen in a popup.
  *
  * A popup rather than a redirect because a redirect unmounts the editor. The
  * design would survive — drafts are recovered — but the user would come back
  * to a recovery prompt in the middle of signing in.
  *
- * The window's own origin is passed along so the service knows where to send
- * the token, and checks it against its allow-list before doing so.
+ * The window name is fixed, which is deliberate: a second click while a flow is
+ * already open reuses that window instead of starting a competing one.
  */
-export function openConnectPopup(): Window | null {
+export function openConnectPopup(authorizeUrl: string): Window | null {
   const width = 600;
   const height = 760;
   // Centred on the window the user is actually looking at, which is not
@@ -329,12 +447,8 @@ export function openConnectPopup(): Window | null {
   const left = window.screenX + (window.outerWidth - width) / 2;
   const top = window.screenY + (window.outerHeight - height) / 2;
 
-  const url = `${CANVA_API_URL}/api/canva/login?origin=${encodeURIComponent(
-    window.location.origin,
-  )}`;
-
   return window.open(
-    url,
+    authorizeUrl,
     "canva-connect",
     `width=${width},height=${height},left=${Math.max(0, left)},top=${Math.max(0, top)}`,
   );

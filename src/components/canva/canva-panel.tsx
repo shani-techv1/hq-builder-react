@@ -1,8 +1,9 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Link2Off, Sparkles } from "lucide-react";
+import { Sparkles, TriangleAlert } from "lucide-react";
 
+import { CanvaAccounts } from "@/components/canva/canva-accounts";
 import { CanvaProjectCard } from "@/components/canva/canva-project-card";
 import { EmptyState } from "@/components/common/empty-state";
 import { PrimaryButton } from "@/components/common/primary-button";
@@ -11,15 +12,16 @@ import { PanelBody } from "@/components/panels/panel-body";
 import type { PanelBodyProps } from "@/components/panels/panel-content";
 import { ValidationBadge } from "@/components/inspector/validation-badge";
 import { useCanva } from "@/hooks/use-canva";
+import { accountLabel } from "@/lib/canva";
 import { cn } from "@/lib/utils";
 
 /**
  * Canva — the user's designs, ready to place.
  *
- * Two states, switched wholesale rather than greyed in and out: not connected,
- * and connected. Importing goes through the same upload pipeline a dragged-in
- * file uses, so a Canva design becomes an ordinary library asset the moment it
- * lands and behaves like one from then on.
+ * Any number of Canva accounts can be attached at once, and the grid always
+ * belongs to exactly one of them: the selected account. Importing goes through
+ * the same upload pipeline a dragged-in file uses, so a Canva design becomes an
+ * ordinary library asset the moment it lands and behaves like one from then on.
  */
 export function CanvaPanel({ onOpenPanel }: PanelBodyProps) {
   const canva = useCanva();
@@ -55,15 +57,16 @@ export function CanvaPanel({ onOpenPanel }: PanelBodyProps) {
     <div className="relative flex min-h-0 flex-1 flex-col">
       <PanelBody className="space-y-4">
         {canva.error ? (
-          <ValidationBadge
-            tone="error"
-            label="Canva"
-            detail={canva.error}
-          />
+          <ValidationBadge tone="error" label="Canva" detail={canva.error} />
         ) : null}
 
         {canva.status === "disconnected" ? (
-          <Disconnected onConnect={canva.connect} onRetry={canva.retry} />
+          <Disconnected
+            onConnect={canva.connect}
+            onRetry={canva.retry}
+            isConnecting={canva.connecting}
+            isChecking={canva.accountsLoading}
+          />
         ) : (
           <Connected canva={canva} onImport={handleImport} />
         )}
@@ -77,9 +80,13 @@ export function CanvaPanel({ onOpenPanel }: PanelBodyProps) {
 function Disconnected({
   onConnect,
   onRetry,
+  isConnecting,
+  isChecking,
 }: {
   onConnect: () => void;
   onRetry: () => void;
+  isConnecting: boolean;
+  isChecking: boolean;
 }) {
   return (
     <motion.div
@@ -100,7 +107,7 @@ function Disconnected({
       </h3>
       <p className="mt-1 max-w-[32ch] text-xs leading-relaxed text-muted-foreground">
         Bring designs you have already made straight onto the sheet, at print
-        resolution.
+        resolution. You can connect more than one account.
       </p>
 
       <PrimaryButton
@@ -108,9 +115,10 @@ function Disconnected({
         size="md"
         block={false}
         onClick={onConnect}
+        disabled={isConnecting || isChecking}
         className="mt-4"
       >
-        Connect Canva
+        {isConnecting ? "Waiting for Canva…" : "Connect Canva"}
       </PrimaryButton>
 
       {/* A sign-in that opens in a new window can be missed entirely. */}
@@ -142,18 +150,71 @@ function Connected({
   canva: ReturnType<typeof useCanva>;
   onImport: (projectId: string) => Promise<void>;
 }) {
+  const { selectedAccount } = canva;
+
+  const accountList = (
+    <CanvaAccounts
+      accounts={canva.accounts}
+      selectedAccountId={selectedAccount?.id ?? null}
+      connecting={canva.connecting}
+      disconnectingId={canva.disconnectingId}
+      onSelect={canva.selectAccount}
+      onConnect={canva.connect}
+      onDisconnect={canva.disconnect}
+    />
+  );
+
+  /*
+   * An expired account replaces the grid rather than sitting above an empty
+   * one. There is nothing to show for it and nothing to be done with it except
+   * reconnect — while every other account in the list is still selectable and
+   * still works.
+   */
+  if (selectedAccount?.status === "expired") {
+    return (
+      <>
+        {accountList}
+        <EmptyState
+          icon={TriangleAlert}
+          title="This account needs reconnecting"
+          description={`${accountLabel(selectedAccount)} signed out of Canva. Reconnect it to see its designs — your other accounts are unaffected.`}
+          action={
+            <PrimaryButton
+              size="md"
+              block={false}
+              variant="outline"
+              onClick={canva.connect}
+              disabled={canva.connecting}
+            >
+              {canva.connecting ? "Waiting for Canva…" : "Reconnect"}
+            </PrimaryButton>
+          }
+        />
+      </>
+    );
+  }
+
   if (canva.isLoading) {
-    return <ProjectSkeleton />;
+    return (
+      <>
+        {accountList}
+        <ProjectSkeleton />
+      </>
+    );
   }
 
   if (canva.projects.length === 0) {
     return (
       <>
-        <AccountRow onDisconnect={canva.disconnect} />
+        {accountList}
         <EmptyState
           icon={Sparkles}
           title="No designs yet"
-          description="Designs you create in Canva will appear here."
+          description={
+            selectedAccount
+              ? `Designs you create in ${accountLabel(selectedAccount)} will appear here.`
+              : "Designs you create in Canva will appear here."
+          }
         />
       </>
     );
@@ -161,7 +222,7 @@ function Connected({
 
   return (
     <>
-      <AccountRow onDisconnect={canva.disconnect} />
+      {accountList}
 
       <div className="grid grid-cols-2 gap-2.5">
         <AnimatePresence mode="popLayout" initial={false}>
@@ -188,30 +249,6 @@ function Connected({
         </PrimaryButton>
       ) : null}
     </>
-  );
-}
-
-function AccountRow({ onDisconnect }: { onDisconnect: () => void }) {
-  return (
-    <div className="flex items-center justify-between gap-2 rounded-xl border border-border bg-card px-2.5 py-2">
-      <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-foreground">
-        <Sparkles className="size-3.5 text-primary" strokeWidth={2.2} aria-hidden />
-        Canva connected
-      </span>
-
-      <button
-        type="button"
-        onClick={onDisconnect}
-        className={cn(
-          "inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[10.5px] font-semibold",
-          "text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-          "outline-none focus-visible:ring-3 focus-visible:ring-ring/40",
-        )}
-      >
-        <Link2Off className="size-3" strokeWidth={2.4} aria-hidden />
-        Disconnect
-      </button>
-    </div>
   );
 }
 
