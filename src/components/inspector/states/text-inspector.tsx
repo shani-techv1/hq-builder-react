@@ -225,6 +225,7 @@ export function TextInspector({
         />
 
         <PropertySlider
+          data-inspector-focus="opacity"
           label="Opacity"
           value={object.opacity}
           onChange={canvas.setSelectionOpacity}

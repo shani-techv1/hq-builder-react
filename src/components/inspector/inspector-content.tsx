@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Lock } from "lucide-react";
 
@@ -26,9 +27,33 @@ type InspectorState = "canvas" | "image" | "text" | "multi";
  * what says which of the four states you are looking at — without it, selecting
  * a layer would silently change every control below.
  */
-export function InspectorContent() {
+export function InspectorContent({ focus }: { focus?: string | null }) {
   const { canvas, settings, findAsset } = useEditorState();
   const { selectedObjects } = canvas;
+  const scroller = React.useRef<HTMLDivElement>(null);
+
+  /**
+   * Bring a named row into view when the panel is opened for it.
+   *
+   * The toolbar's opacity button opens this panel rather than carrying a second
+   * slider of its own, so it has to land on the right row — a panel that opens
+   * scrolled to the top has only half answered the click.
+   *
+   * Deferred by a frame because the drawer animates its width open, and an
+   * element inside a collapsing box measures to nothing.
+   */
+  React.useEffect(() => {
+    if (!focus) return;
+    const id = requestAnimationFrame(() => {
+      const row = scroller.current?.querySelector<HTMLElement>(
+        `[data-inspector-focus="${focus}"]`,
+      );
+      if (!row) return;
+      row.scrollIntoView({ block: "center", behavior: "smooth" });
+      row.querySelector<HTMLElement>("[role=slider]")?.focus();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [focus, selectedObjects.length]);
 
   const state: InspectorState =
     selectedObjects.length === 0
@@ -79,7 +104,10 @@ export function InspectorContent() {
           ) : null}
         </div>
 
-        <div className="scrollbar-slim min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-canvas/60 px-3 py-3">
+        <div
+          ref={scroller}
+          className="scrollbar-slim min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-canvas/60 px-3 py-3"
+        >
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={state === "canvas" ? "canvas" : `${state}-${primary.id}`}

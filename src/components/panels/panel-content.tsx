@@ -12,6 +12,11 @@ import type { PanelId } from "@/lib/navigation";
 export interface PanelBodyProps {
   /** Hand the user on to another panel — used after an import completes. */
   onOpenPanel: (id: PanelId) => void;
+  /**
+   * A row the panel should open scrolled to, when it was opened *for* that row
+   * rather than in general. Ignored by panels that have no such rows.
+   */
+  focus?: string | null;
 }
 
 /**
@@ -28,7 +33,11 @@ const PANELS: Record<PanelId, React.ComponentType<PanelBodyProps>> = {
   settings: InspectorContent,
 };
 
-export function PanelContent({ id, onOpenPanel }: PanelBodyProps & { id: PanelId }) {
+export function PanelContent({
+  id,
+  onOpenPanel,
+  focus,
+}: PanelBodyProps & { id: PanelId }) {
   const Panel = PANELS[id];
-  return <Panel onOpenPanel={onOpenPanel} />;
+  return <Panel onOpenPanel={onOpenPanel} focus={focus} />;
 }

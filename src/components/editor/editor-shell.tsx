@@ -86,6 +86,23 @@ export function EditorShell() {
     markDirty();
   };
 
+  /**
+   * A row the next panel opening should land on.
+   *
+   * Set when a panel is opened *for* something specific — the selection
+   * toolbar's opacity button — and cleared as soon as it closes, so opening
+   * Settings from the rail afterwards starts at the top as usual.
+   */
+  const [panelFocus, setPanelFocus] = React.useState<string | null>(null);
+
+  const openPanelAt = React.useCallback(
+    (id: Parameters<typeof openPanel>[0], focus: string) => {
+      setPanelFocus(focus);
+      openPanel(id);
+    },
+    [openPanel],
+  );
+
   const displayedPanel = activePanel ?? rememberedPanel;
   const navItem = displayedPanel ? findNavItem(displayedPanel) : undefined;
 
@@ -138,15 +155,22 @@ export function EditorShell() {
                 <PanelHeader
                   title={navItem.title}
                   description={navItem.description}
-                  onClose={closePanel}
+                  onClose={() => {
+                    setPanelFocus(null);
+                    closePanel();
+                  }}
                 />
-                <PanelContent id={displayedPanel} onOpenPanel={openPanel} />
+                <PanelContent
+                  id={displayedPanel}
+                  onOpenPanel={openPanel}
+                  focus={activePanel ? panelFocus : null}
+                />
               </>
             ) : null}
           </SlidingPanel>
 
           <main className="relative min-w-0 flex-1 overflow-hidden">
-            <Workspace onOpenPanel={openPanel} />
+            <Workspace onOpenPanel={openPanel} onOpenPanelAt={openPanelAt} />
           </main>
         </div>
       </EditorStateProvider>

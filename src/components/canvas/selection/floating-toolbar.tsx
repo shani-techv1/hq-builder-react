@@ -12,13 +12,12 @@ export interface FloatingToolbarProps {
   badge: React.ReactNode;
   boundary?: React.RefObject<HTMLElement | null>;
   reflowKey?: string | number;
-  /** Opacity of the selected object, 0–100. */
-  opacity: number;
   locked: boolean;
   onRotate: () => void;
   onDuplicate: () => void;
   onToggleLock: () => void;
-  onOpacityChange: (value: number) => void;
+  /** Opens the Settings panel on the opacity row. */
+  onOpenOpacity: () => void;
   onDelete: () => void;
 }
 
@@ -35,12 +34,11 @@ export function FloatingToolbar({
   badge,
   boundary,
   reflowKey,
-  opacity,
   locked,
   onRotate,
   onDuplicate,
   onToggleLock,
-  onOpacityChange,
+  onOpenOpacity,
   onDelete,
 }: FloatingToolbarProps) {
   return (
@@ -67,7 +65,7 @@ export function FloatingToolbar({
         active={locked}
         onClick={onToggleLock}
       />
-      <OpacityControl value={opacity} onChange={onOpacityChange} />
+      <OpacityControl onOpen={onOpenOpacity} />
 
       <ToolbarDivider />
 

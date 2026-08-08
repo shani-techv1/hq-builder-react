@@ -37,6 +37,8 @@ const PLACEMENT_DRIFT = 3;
 export interface WorkspaceProps {
   /** Reveal a panel — used to show artwork uploaded from the canvas. */
   onOpenPanel: (id: PanelId) => void;
+  /** Reveal a panel scrolled to one of its rows. */
+  onOpenPanelAt: (id: PanelId, focus: string) => void;
   className?: string;
 }
 
@@ -50,7 +52,7 @@ export interface WorkspaceProps {
  * Sheet settings and the selection come from the editor's shared state rather
  * than living here, because the inspector drives the same switches.
  */
-export function Workspace({ onOpenPanel, className }: WorkspaceProps) {
+export function Workspace({ onOpenPanel, onOpenPanelAt, className }: WorkspaceProps) {
   const { canvas, settings, library, placeAsset, placeAssetById } =
     useEditorState();
   const {
@@ -246,6 +248,7 @@ export function Workspace({ onOpenPanel, className }: WorkspaceProps) {
                 interaction={canvas}
                 boundary={pane}
                 interactive={!isPanning}
+                onOpenOpacity={() => onOpenPanelAt("settings", "opacity")}
                 onPlaceAsset={placeAssetById}
                 onDropFiles={(files, at) => void uploadAndPlace(files, at)}
                 onBrowse={picker.open}

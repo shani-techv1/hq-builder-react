@@ -65,6 +65,7 @@ export function MultiSelectionInspector({
         summary={opacities.size === 1 ? `${sharedOpacity}%` : "Mixed"}
       >
         <PropertySlider
+          data-inspector-focus="opacity"
           label="Opacity"
           value={sharedOpacity}
           onChange={(opacity) => canvas.setSelectionOpacity(opacity)}

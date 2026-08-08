@@ -3,72 +3,21 @@
 import { Blend } from "lucide-react";
 
 import { ToolbarAction } from "@/components/canvas/selection/toolbar-action";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Slider } from "@/components/ui/slider";
 
 export interface OpacityControlProps {
-  /** 0–100, taken from the first selected object. */
-  value: number;
-  onChange: (value: number) => void;
+  /** Opens the Settings panel on the opacity row. */
+  onOpen: () => void;
 }
 
-/** Presets that cover the reasons anyone reaches for opacity on a print sheet. */
-const PRESETS = [25, 50, 75, 100];
-
 /**
- * Opacity, as a popover on the selection toolbar.
+ * Opacity, as a jump to the inspector rather than a control of its own.
  *
- * A slider rather than a numeric field: opacity is judged by eye against the
- * artwork, so the control has to be draggable while the sheet stays visible.
+ * It used to be a popover with a second slider in it. Two controls for one
+ * property is one too many — they had to be kept in step, and the popover sat
+ * over the artwork you were adjusting the opacity of, which is the one thing
+ * you need to see while you do it. The panel is a column beside the sheet, so
+ * nothing is covered.
  */
-export function OpacityControl({ value, onChange }: OpacityControlProps) {
-  return (
-    <Popover>
-      <PopoverTrigger
-        nativeButton={false}
-        render={<span className="inline-flex" />}
-      >
-        <ToolbarAction icon={Blend} label="Opacity" />
-      </PopoverTrigger>
-
-      <PopoverContent align="center" sideOffset={10} className="w-60 gap-3">
-        <div className="flex items-center justify-between">
-          <span className="text-[12.5px] font-semibold text-foreground">
-            Opacity
-          </span>
-          <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
-            {value}%
-          </span>
-        </div>
-
-        <Slider
-          value={value}
-          min={0}
-          max={100}
-          step={1}
-          onValueChange={(next) =>
-            onChange(Array.isArray(next) ? next[0] : Number(next))
-          }
-          aria-label="Opacity"
-        />
-
-        <div className="flex items-center gap-1.5">
-          {PRESETS.map((preset) => (
-            <button
-              key={preset}
-              type="button"
-              onClick={() => onChange(preset)}
-              className="flex-1 rounded-md border border-border bg-card py-1 text-[11px] font-semibold tabular-nums text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary-softer hover:text-primary"
-            >
-              {preset}%
-            </button>
-          ))}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
+export function OpacityControl({ onOpen }: OpacityControlProps) {
+  return <ToolbarAction icon={Blend} label="Opacity" onClick={onOpen} />;
 }

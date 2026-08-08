@@ -21,7 +21,8 @@ export interface SelectionOverlayProps {
   onDuplicate: () => void;
   onDelete: () => void;
   onToggleLock: () => void;
-  onOpacityChange: (value: number) => void;
+  /** Opens the Settings panel on the opacity row. */
+  onOpenOpacity: () => void;
 }
 
 /**
@@ -43,7 +44,7 @@ export function SelectionOverlay({
   onDuplicate,
   onDelete,
   onToggleLock,
-  onOpacityChange,
+  onOpenOpacity,
 }: SelectionOverlayProps) {
   const isMulti = selectedObjects.length > 1;
   const primary = selectedObjects[0];
@@ -101,12 +102,11 @@ export function SelectionOverlay({
                   }
                   boundary={boundary}
                   reflowKey={reflowKey}
-                  opacity={primary.opacity}
                   locked={primary.locked}
                   onRotate={onRotate}
                   onDuplicate={onDuplicate}
                   onToggleLock={onToggleLock}
-                  onOpacityChange={onOpacityChange}
+                  onOpenOpacity={onOpenOpacity}
                   onDelete={onDelete}
                 />
               )}

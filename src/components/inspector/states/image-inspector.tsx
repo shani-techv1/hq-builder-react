@@ -271,6 +271,7 @@ export function ImageInspector({
         </PropertyRow>
 
         <PropertySlider
+          data-inspector-focus="opacity"
           label="Opacity"
           value={object.opacity}
           onChange={(opacity) => canvas.setSelectionOpacity(opacity)}
