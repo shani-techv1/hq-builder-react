@@ -8,6 +8,7 @@ import { Ruler, RulerCorner } from "@/components/canvas/rulers";
 import { EditorToolbar } from "@/components/toolbar/editor-toolbar";
 import { useEditorState } from "@/components/editor/editor-state";
 import { useCanvasShortcuts } from "@/hooks/use-canvas-shortcuts";
+import { useElementSize } from "@/hooks/use-element-size";
 import { useFilePicker } from "@/hooks/use-file-picker";
 import { useSpacePan } from "@/hooks/use-space-pan";
 import type { PlacementPoint } from "@/lib/canvas-objects";
@@ -15,16 +16,16 @@ import { PX_PER_INCH, SHEET_SIZES, sheetInches } from "@/lib/workspace";
 import { cn } from "@/lib/utils";
 
 /**
- * Space between the pane's edges and the sheet, in pixels.
+ * Smallest space between the pane's edges and the sheet, in pixels.
  *
- * The top gutter is deeper than the sides because the spec card floats in it,
- * and because the sheet wants clear air under the toolbar. The rulers take
- * these same values as their origin, so zero always lands on the sheet's
- * top-left corner.
+ * The sheet is centred in the pane, so these are floors rather than fixed
+ * gutters: they take over once the sheet outgrows the pane and the view starts
+ * to scroll. The top one is deeper than the sides because the spec card floats
+ * in it, and because the sheet wants clear air under the toolbar.
  */
-const GUTTER_X = 56;
-const GUTTER_TOP = 92;
-const GUTTER_BOTTOM = 72;
+const MIN_GUTTER_X = 56;
+const MIN_GUTTER_TOP = 92;
+const MIN_GUTTER_BOTTOM = 72;
 
 /**
  * How far apart, in sheet percentages, consecutive files from one drop land.
@@ -39,9 +40,9 @@ export interface WorkspaceProps {
 /**
  * The canvas pane: toolbar, rulers, and the sheet they measure.
  *
- * The sheet is still a placeholder — no canvas, no layers. What is real is the
- * geometry around it: the sheet takes its proportions from the selected size,
- * scales with zoom, and sits at a fixed gutter from the pane's origin.
+ * The geometry is the point here: the sheet takes its proportions from the
+ * selected size, scales with zoom, and stays centred in the pane until it
+ * outgrows it, at which point the pane scrolls from a fixed gutter instead.
  *
  * Sheet settings and the selection come from the editor's shared state rather
  * than living here, because the inspector drives the same switches.
@@ -65,6 +66,7 @@ export function Workspace({ className }: WorkspaceProps) {
   const horizontalRuler = React.useRef<HTMLDivElement>(null);
   const verticalRuler = React.useRef<HTMLDivElement>(null);
   const pane = React.useRef<HTMLDivElement>(null);
+  const paneSize = useElementSize(pane);
 
   const { isPanning, handlers: panHandlers } = useSpacePan(pane);
 
@@ -96,6 +98,28 @@ export function Workspace({ className }: WorkspaceProps) {
   const { width, height } = sheetInches(sheetSize);
   const sheetLabel =
     SHEET_SIZES.find((size) => size.id === sheetSize)?.label ?? "";
+
+  const baseWidth = width * PX_PER_INCH;
+  const baseHeight = height * PX_PER_INCH;
+
+  /**
+   * Where the sheet's top-left corner sits in the pane's scrollable content.
+   *
+   * Centred while the sheet fits, so it never sits in a corner with dead space
+   * beside it, and clamped to the gutter once it doesn't, so an oversized sheet
+   * scrolls from a consistent edge rather than being cropped at the start.
+   *
+   * The rulers take these same two numbers as their origin, so zero always
+   * lands on the sheet's top-left corner however the sheet is placed.
+   */
+  const originX = Math.max(
+    MIN_GUTTER_X,
+    (paneSize.width - (baseWidth * zoom) / 100) / 2,
+  );
+  const originY = Math.max(
+    MIN_GUTTER_TOP,
+    (paneSize.height - (baseHeight * zoom) / 100) / 2,
+  );
 
   /**
    * Files dropped on the sheet are uploaded and then placed where they landed.
@@ -156,7 +180,7 @@ export function Workspace({ className }: WorkspaceProps) {
             ref={horizontalRuler}
             orientation="horizontal"
             zoom={zoom}
-            origin={GUTTER_X}
+            origin={originX}
             className="flex-1"
           />
         </div>
@@ -166,7 +190,7 @@ export function Workspace({ className }: WorkspaceProps) {
             ref={verticalRuler}
             orientation="vertical"
             zoom={zoom}
-            origin={GUTTER_TOP}
+            origin={originY}
             className="shrink-0"
           />
 
@@ -191,13 +215,15 @@ export function Workspace({ className }: WorkspaceProps) {
           >
             <div
               style={{
-                padding: `${GUTTER_TOP}px ${GUTTER_X}px ${GUTTER_BOTTOM}px`,
+                // Leading edges carry the centring offset; trailing ones stay
+                // at the floor, since they only ever show once it scrolls.
+                padding: `${originY}px ${MIN_GUTTER_X}px ${MIN_GUTTER_BOTTOM}px ${originX}px`,
                 width: "max-content",
               }}
             >
               <DesignSheet
-                baseWidth={width * PX_PER_INCH}
-                baseHeight={height * PX_PER_INCH}
+                baseWidth={baseWidth}
+                baseHeight={baseHeight}
                 zoom={zoom}
                 sizeLabel={sheetLabel}
                 showBackground={showBackground}
