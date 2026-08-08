@@ -24,9 +24,31 @@
  * whatever it was opened with. Since the origin check below compares against
  * this value, opening the popup anywhere else would mean rejecting the very
  * message the flow exists to deliver.
+ *
+ * Two ways in, because this module is built twice. The standalone Next app
+ * inlines `NEXT_PUBLIC_CANVA_API_URL` at build time; the storefront bundle is
+ * built by Vite, which does no such thing, and is served to whichever shop
+ * loads it — so there the value is injected by the page instead, and the same
+ * bundle works for every deployment.
+ *
+ * Read at module scope deliberately: the page sets the global in a classic
+ * `<script>`, and a module script is deferred behind those, so it is always
+ * there by the time this runs.
  */
-export const CANVA_API_URL =
-  process.env.NEXT_PUBLIC_CANVA_API_URL ?? "http://127.0.0.1:5055";
+function resolveApiUrl(): string {
+  const injected =
+    typeof window === "undefined"
+      ? undefined
+      : (window as unknown as Record<string, unknown>).__CANVA_API_URL__;
+  if (typeof injected === "string" && injected) return injected;
+
+  const fromEnv = process.env.NEXT_PUBLIC_CANVA_API_URL;
+  if (typeof fromEnv === "string" && fromEnv) return fromEnv;
+
+  return "http://127.0.0.1:5055";
+}
+
+export const CANVA_API_URL = resolveApiUrl();
 
 /** Origin the OAuth popup posts its result from, for verifying the message. */
 export const CANVA_API_ORIGIN = (() => {

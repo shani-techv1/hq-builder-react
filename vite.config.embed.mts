@@ -38,6 +38,15 @@ export default defineConfig({
   publicDir: false,
   define: {
     "process.env.NODE_ENV": JSON.stringify("production"),
+    /*
+     * Next inlines NEXT_PUBLIC_* at build time; nothing here does. Defined as
+     * `undefined` rather than left alone so the read cannot become a
+     * `process is not defined` at runtime, and so it is obvious the storefront
+     * gets this value from the page instead — see `__CANVA_API_URL__`, which
+     * the app-proxy route injects per deployment. Baking it in here would tie
+     * the bundle to whichever machine happened to build it.
+     */
+    "process.env.NEXT_PUBLIC_CANVA_API_URL": "undefined",
   },
   experimental: {
     renderBuiltUrl(filename) {
