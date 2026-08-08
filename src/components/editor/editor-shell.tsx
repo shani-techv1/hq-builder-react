@@ -8,15 +8,16 @@ import {
 } from "@/components/editor/editor-state";
 import { DraftRecoveryDialog } from "@/components/editor/draft-recovery-dialog";
 import { DesignFileMenu } from "@/components/editor/design-file-menu";
+import { SheetCartActions } from "@/components/editor/sheet-cart-actions";
 import { Workspace } from "@/components/editor/workspace";
 import { EditorHeader } from "@/components/header/editor-header";
-import { InspectorPanel } from "@/components/inspector/inspector-panel";
 import { PanelContent } from "@/components/panels/panel-content";
 import { PanelHeader } from "@/components/panels/panel-header";
 import { SlidingPanel } from "@/components/panels/sliding-panel";
 import { Sidebar } from "@/components/sidebar/sidebar";
 import { usePanelController } from "@/hooks/use-panel-controller";
 import { useSaveStatus } from "@/hooks/use-save-status";
+import { getCommerceAdapter, getDesignSource } from "@/lib/commerce";
 import { findNavItem } from "@/lib/navigation";
 
 const DEFAULT_DESIGN_NAME = "Untitled gang sheet";
@@ -61,7 +62,24 @@ export function EditorShell() {
   } = usePanelController();
 
   const [designName, setDesignName] = React.useState(DEFAULT_DESIGN_NAME);
-  const { status, markDirty, save } = useSaveStatus();
+
+  /**
+   * Save through the storefront when there is one, and fall back to the local
+   * indicator when there isn't. Resolved per call rather than captured, because
+   * the adapter is installed by the embed entry before React mounts and stays
+   * null for the whole life of the standalone app.
+   */
+  const persist = React.useCallback(async () => {
+    const adapter = getCommerceAdapter();
+    const source = getDesignSource();
+    if (!adapter || !source) return { ok: true as const };
+    return adapter.saveDesign(source());
+  }, []);
+
+  const { status, markDirty, save } = useSaveStatus(
+    "saved",
+    getCommerceAdapter() ? persist : undefined,
+  );
 
   const handleDesignNameChange = (name: string) => {
     setDesignName(name);
@@ -88,7 +106,12 @@ export function EditorShell() {
           onDesignNameChange={handleDesignNameChange}
           saveStatus={status}
           onSave={save}
-          actions={<DesignFileMenu />}
+          actions={
+            <>
+              <DesignFileMenu />
+              <SheetCartActions />
+            </>
+          }
         />
 
         <DraftRecoveryGate />
@@ -123,12 +146,8 @@ export function EditorShell() {
           </SlidingPanel>
 
           <main className="relative min-w-0 flex-1 overflow-hidden">
-            <Workspace />
+            <Workspace onOpenPanel={openPanel} />
           </main>
-
-          {/* Below this width the rail, the left panel and a 380px inspector
-              can't coexist — the inspector is what gives way. */}
-          <InspectorPanel className="hidden lg:flex" />
         </div>
       </EditorStateProvider>
     </div>

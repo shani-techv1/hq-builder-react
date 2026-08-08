@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Lock, SlidersHorizontal } from "lucide-react";
+import { Lock } from "lucide-react";
 
 import { useEditorState } from "@/components/editor/editor-state";
 import { CanvasInspector } from "@/components/inspector/states/canvas-inspector";
@@ -10,23 +10,23 @@ import { MultiSelectionInspector } from "@/components/inspector/states/multi-sel
 import { TextInspector } from "@/components/inspector/states/text-inspector";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { KIND_LABELS } from "@/lib/canvas-objects";
-import { cn } from "@/lib/utils";
 
-/** Which of the four contextual states the panel is in. */
+/** Which of the four contextual states the inspector is in. */
 type InspectorState = "canvas" | "image" | "text" | "multi";
 
 /**
- * The right-hand inspector.
+ * The inspector's body: sheet settings, or the properties of the selection.
  *
- * A fixed 380px column that switches wholesale between four states rather than
- * greying controls in and out — the panel should always be about the thing
- * that is selected, and a disabled section is still a section you have to read
- * past.
+ * Switches wholesale between four states rather than greying controls in and
+ * out — the panel should always be about the thing that is selected, and a
+ * disabled section is still a section you have to read past. The content
+ * crossfades in place so switching selections never shifts the layout.
  *
- * The content crossfades while the column itself stays put, so switching
- * selections never shifts the workspace beside it.
+ * The panel's own heading is static ("Settings"), so the strip at the top is
+ * what says which of the four states you are looking at — without it, selecting
+ * a layer would silently change every control below.
  */
-export function InspectorPanel({ className }: { className?: string }) {
+export function InspectorContent() {
   const { canvas, settings, findAsset } = useEditorState();
   const { selectedObjects } = canvas;
 
@@ -57,21 +57,8 @@ export function InspectorPanel({ className }: { className?: string }) {
 
   return (
     <TooltipProvider delay={300}>
-      <motion.aside
-        aria-label="Inspector"
-        initial={{ x: 24, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ type: "spring", stiffness: 380, damping: 40 }}
-        className={cn(
-          "z-30 flex h-full w-[380px] shrink-0 flex-col border-l border-border bg-card",
-          className,
-        )}
-      >
-        <header className="flex shrink-0 items-center gap-2.5 border-b border-border px-4 py-3">
-          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
-            <SlidersHorizontal className="size-4" strokeWidth={2.1} aria-hidden />
-          </span>
-
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex shrink-0 items-center gap-2.5 border-b border-border px-4 py-2.5">
           <div className="min-w-0 flex-1">
             <p className="truncate text-[13px] font-bold tracking-tight text-foreground">
               {title}
@@ -90,7 +77,7 @@ export function InspectorPanel({ className }: { className?: string }) {
               Locked
             </span>
           ) : null}
-        </header>
+        </div>
 
         <div className="scrollbar-slim min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-canvas/60 px-3 py-3">
           <AnimatePresence mode="wait" initial={false}>
@@ -126,7 +113,7 @@ export function InspectorPanel({ className }: { className?: string }) {
             </motion.div>
           </AnimatePresence>
         </div>
-      </motion.aside>
+      </div>
     </TooltipProvider>
   );
 }

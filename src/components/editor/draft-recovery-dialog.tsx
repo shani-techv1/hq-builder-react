@@ -7,7 +7,7 @@ import { History } from "lucide-react";
 import { PrimaryButton } from "@/components/common/primary-button";
 import { formatUploadDate } from "@/lib/assets";
 import type { RestoredDesign } from "@/lib/design-document";
-import { SHEET_SIZES, SHEET_SPEC } from "@/lib/workspace";
+import { SHEET_SPEC, sheetSizeLabel } from "@/lib/workspace";
 import { cn } from "@/lib/utils";
 
 export interface DraftRecoveryDialogProps {
@@ -76,9 +76,7 @@ export function DraftRecoveryDialog({
   onStartNew,
 }: DraftRecoveryDialogProps) {
   const objectCount = draft?.document.objects.length ?? 0;
-  const sheetLabel =
-    SHEET_SIZES.find((size) => size.id === draft?.document.sheetSize)?.label ??
-    "";
+  const sheetLabel = draft ? sheetSizeLabel(draft.document.sheetSize) : "";
   const edited = draft ? lastEdited(draft.savedAt) : null;
 
   return (

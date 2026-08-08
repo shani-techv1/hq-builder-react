@@ -9,7 +9,7 @@ import type { WorkspaceSettings } from "@/components/editor/editor-state";
 import {
   MEASUREMENT_UNITS,
   SHEET_BACKGROUNDS,
-  SHEET_SIZES,
+  getSheetSizes,
   type MeasurementUnit,
 } from "@/lib/workspace";
 
@@ -37,7 +37,7 @@ export function CanvasInspector({ settings }: { settings: WorkspaceSettings }) {
           label="Sheet size"
           value={settings.sheetSize}
           onChange={settings.setSheetSize}
-          options={SHEET_SIZES.map((size) => ({
+          options={getSheetSizes().map((size) => ({
             value: size.id,
             label: size.label,
             detail: size.description,

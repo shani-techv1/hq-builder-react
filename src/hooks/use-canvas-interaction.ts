@@ -27,7 +27,7 @@ import {
   type HistoryPolicy,
   type HistoryState,
 } from "@/lib/history";
-import { DEFAULT_SHEET_SIZE, sheetInches } from "@/lib/workspace";
+import { defaultSheetSize, sheetInches } from "@/lib/workspace";
 
 /** Offset applied to a duplicate so it doesn't land exactly on its source. */
 const DUPLICATE_OFFSET = 3;
@@ -93,13 +93,18 @@ export interface ObjectPatch {
   patch: CanvasObjectPatch;
 }
 
-const INITIAL_STATE: CanvasState = {
+/**
+ * A function, not a constant: the storefront build replaces the sheet-size list
+ * after this module is evaluated but before anything mounts, so a size captured
+ * at module scope would start every sheet on a size the merchant may not sell.
+ */
+const initialState = (): CanvasState => ({
   objects: [],
   selectedIds: [],
-  sheetSize: DEFAULT_SHEET_SIZE,
+  sheetSize: defaultSheetSize(),
   copyCount: 0,
   placeCount: 0,
-};
+});
 
 /** Apply a change to the selected objects, leaving the rest untouched. */
 function patchSelected(
@@ -551,8 +556,8 @@ export interface CanvasInteraction {
 export function useCanvasInteraction(): CanvasInteraction {
   const [history, dispatch] = React.useReducer(
     editorReducer,
-    INITIAL_STATE,
-    initHistory,
+    undefined,
+    () => initHistory(initialState()),
   );
   const state = history.present;
 

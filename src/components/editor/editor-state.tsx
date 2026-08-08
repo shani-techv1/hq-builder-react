@@ -24,6 +24,8 @@ import {
   type SerializedDesign,
 } from "@/lib/design-document";
 import { getAssetFile, releaseImageCache } from "@/lib/image-cache";
+import { setDesignSource } from "@/lib/commerce";
+import { renderSheetPreview } from "@/lib/sheet-preview";
 
 /**
  * Everything about the sheet that isn't an object on it.
@@ -70,13 +72,22 @@ export interface EditorState {
   /** Look up an asset by id — how a placement reaches its file's metadata. */
   findAsset: (id: string | undefined) => Asset | undefined;
   /**
-   * Place a library asset on the sheet, centred on `at` or on the sheet.
+   * Place an asset on the sheet, centred on `at` or on the sheet.
    *
    * Lives on the editor rather than on either half, because it is the one
    * operation that spans both: the canvas gains an object, and the library
    * counts a use.
    */
-  placeAsset: (assetId: string, at?: PlacementPoint) => void;
+  placeAsset: (asset: Asset, at?: PlacementPoint) => void;
+  /**
+   * The same, for a caller holding only an id — a drag out of the library grid.
+   *
+   * Not interchangeable with {@link placeAsset}: anything placing what it has
+   * just uploaded must pass the asset itself, because `uploadFiles` resolves in
+   * the same tick as the state update that adds its assets, so the library this
+   * looks in is still the one from before the upload.
+   */
+  placeAssetById: (assetId: string, at?: PlacementPoint) => void;
   /**
    * Local persistence: the startup prompt, and the autosave behind it.
    *
@@ -235,11 +246,15 @@ export function EditorStateProvider({
   const findAsset = (id: string | undefined) =>
     id ? library.assets.find((asset) => asset.id === id) : undefined;
 
-  const placeAsset = (assetId: string, at?: PlacementPoint) => {
-    const asset = findAsset(assetId);
-    if (!asset) return;
+  const placeAsset = (asset: Asset, at?: PlacementPoint) => {
     canvas.placeAsset(asset, at);
     library.countPlacement(asset.id);
+  };
+
+  const placeAssetById = (assetId: string, at?: PlacementPoint) => {
+    const asset = findAsset(assetId);
+    if (!asset) return;
+    placeAsset(asset, at);
   };
 
   /**
@@ -282,6 +297,31 @@ export function EditorStateProvider({
     onRestore: restoreDesign,
   });
 
+  /**
+   * Publish the design for the storefront build.
+   *
+   * Save lives above this provider and the commerce adapter is not a component
+   * at all, so neither can call `snapshotDesign` through context. Re-published
+   * on every render because the closure it captures goes stale otherwise, and
+   * withdrawn on unmount so nothing holds a dead editor.
+   */
+  const latestSnapshot = React.useRef(snapshotDesign);
+  latestSnapshot.current = snapshotDesign;
+
+  React.useEffect(() => {
+    setDesignSource(() => {
+      const design = latestSnapshot.current();
+      return {
+        design,
+        preview: renderSheetPreview(
+          design.document.objects,
+          design.document.sheetSize,
+        ),
+      };
+    });
+    return () => setDesignSource(null);
+  }, []);
+
   return (
     <EditorStateContext.Provider
       value={{
@@ -290,6 +330,7 @@ export function EditorStateProvider({
         library,
         findAsset,
         placeAsset,
+        placeAssetById,
         recovery,
         restoreDesign,
         snapshotDesign,

@@ -8,13 +8,58 @@ export interface SheetSize {
   description: string;
 }
 
-export const SHEET_SIZES: SheetSize[] = [
+/** The presets the editor ships with, used whenever nothing overrides them. */
+const BUILT_IN_SHEET_SIZES: SheetSize[] = [
   { id: "22x12", label: '22″ × 12″', description: "Small gang sheet" },
   { id: "22x24", label: '22″ × 24″', description: "Standard gang sheet" },
   { id: "22x36", label: '22″ × 36″', description: "Large gang sheet" },
   { id: "22x60", label: '22″ × 60″', description: "Extra long run" },
   { id: "custom", label: "Custom", description: "Set your own dimensions" },
 ];
+
+let sheetSizes: SheetSize[] = BUILT_IN_SHEET_SIZES;
+
+/**
+ * The sizes a sheet may be set to.
+ *
+ * A function rather than a constant because the storefront build replaces the
+ * list with the sizes the merchant actually sells — offering a size with no
+ * variant behind it would let a shopper design something that cannot be bought.
+ */
+export const getSheetSizes = (): SheetSize[] => sheetSizes;
+
+/**
+ * Replace the presets. Called once by the storefront entry before anything
+ * renders; passing an empty list restores the built-ins rather than leaving
+ * the picker with nothing to offer.
+ */
+export function setSheetSizes(next: SheetSize[]): void {
+  sheetSizes = next.length > 0 ? next : BUILT_IN_SHEET_SIZES;
+}
+
+/**
+ * Kept as a named export because it is the shape of the presets, not the live
+ * list. Anything choosing a size at runtime wants {@link getSheetSizes}.
+ */
+export const SHEET_SIZES = BUILT_IN_SHEET_SIZES;
+
+/**
+ * The size a new sheet opens at.
+ *
+ * The standard gang sheet whenever it is on offer — it is the common case, and
+ * the presets are ordered small-to-large rather than by likelihood. Falls back
+ * to the first available size for a merchant whose list doesn't include it.
+ */
+export const defaultSheetSize = (): string => {
+  const sizes = getSheetSizes();
+  return sizes.some((size) => size.id === DEFAULT_SHEET_SIZE)
+    ? DEFAULT_SHEET_SIZE
+    : (sizes[0]?.id ?? DEFAULT_SHEET_SIZE);
+};
+
+/** A size's short label, for a trigger or a summary line. */
+export const sheetSizeLabel = (id: string): string =>
+  getSheetSizes().find((size) => size.id === id)?.label ?? "";
 
 export const DEFAULT_SHEET_SIZE = "22x24";
 

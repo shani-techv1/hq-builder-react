@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SHEET_SIZES } from "@/lib/workspace";
+import { getSheetSizes, sheetSizeLabel } from "@/lib/workspace";
 import { cn } from "@/lib/utils";
 
 export interface SheetSizeSelectProps {
@@ -17,9 +17,6 @@ export interface SheetSizeSelectProps {
   onValueChange: (value: string) => void;
   className?: string;
 }
-
-const sheetLabel = (id: string) =>
-  SHEET_SIZES.find((size) => size.id === id)?.label ?? "";
 
 /**
  * Sheet size picker. Sits in the toolbar as a text control rather than an icon
@@ -48,11 +45,11 @@ export function SheetSizeSelect({
           strokeWidth={2}
           aria-hidden
         />
-        <SelectValue>{(next) => sheetLabel(String(next))}</SelectValue>
+        <SelectValue>{(next) => sheetSizeLabel(String(next))}</SelectValue>
       </SelectTrigger>
 
       <SelectContent className="min-w-56 rounded-xl p-1">
-        {SHEET_SIZES.map((size) => (
+        {getSheetSizes().map((size) => (
           <SelectItem
             key={size.id}
             value={size.id}

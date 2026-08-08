@@ -45,7 +45,9 @@ export function CanvaPanel({ onOpenPanel }: PanelBodyProps) {
     // A failed upload leaves the panel where it is, with the reason on screen.
     if (!asset) return;
 
-    placeAsset(asset.id);
+    // The asset, not its id: it was created a moment ago and is not in the
+    // library this component closed over yet. See `placeAssetById`.
+    placeAsset(asset);
     onOpenPanel("graphics");
   };
 

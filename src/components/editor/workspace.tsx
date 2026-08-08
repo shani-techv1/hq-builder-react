@@ -12,7 +12,8 @@ import { useElementSize } from "@/hooks/use-element-size";
 import { useFilePicker } from "@/hooks/use-file-picker";
 import { useSpacePan } from "@/hooks/use-space-pan";
 import type { PlacementPoint } from "@/lib/canvas-objects";
-import { PX_PER_INCH, SHEET_SIZES, sheetInches } from "@/lib/workspace";
+import type { PanelId } from "@/lib/navigation";
+import { PX_PER_INCH, sheetInches, sheetSizeLabel } from "@/lib/workspace";
 import { cn } from "@/lib/utils";
 
 /**
@@ -34,6 +35,8 @@ const MIN_GUTTER_BOTTOM = 72;
 const PLACEMENT_DRIFT = 3;
 
 export interface WorkspaceProps {
+  /** Reveal a panel — used to show artwork uploaded from the canvas. */
+  onOpenPanel: (id: PanelId) => void;
   className?: string;
 }
 
@@ -47,8 +50,9 @@ export interface WorkspaceProps {
  * Sheet settings and the selection come from the editor's shared state rather
  * than living here, because the inspector drives the same switches.
  */
-export function Workspace({ className }: WorkspaceProps) {
-  const { canvas, settings, library, placeAsset } = useEditorState();
+export function Workspace({ onOpenPanel, className }: WorkspaceProps) {
+  const { canvas, settings, library, placeAsset, placeAssetById } =
+    useEditorState();
   const {
     zoom,
     setZoom,
@@ -96,8 +100,7 @@ export function Workspace({ className }: WorkspaceProps) {
   };
 
   const { width, height } = sheetInches(sheetSize);
-  const sheetLabel =
-    SHEET_SIZES.find((size) => size.id === sheetSize)?.label ?? "";
+  const sheetLabel = sheetSizeLabel(sheetSize);
 
   const baseWidth = width * PX_PER_INCH;
   const baseHeight = height * PX_PER_INCH;
@@ -133,16 +136,27 @@ export function Workspace({ className }: WorkspaceProps) {
    */
   const uploadAndPlace = React.useCallback(
     async (files: File[], at?: PlacementPoint) => {
+      /*
+       * Opened before the upload starts, not after it finishes.
+       *
+       * The Graphics panel is where progress and rejections are rendered, so
+       * revealing it first means a slow upload shows itself working and a drop
+       * that is entirely rejected explains why — waiting for the promise would
+       * leave both of those cases looking like nothing happened.
+       */
+      onOpenPanel("graphics");
+
       const added = await library.uploadFiles(files);
+      // The assets themselves, not their ids: see `placeAssetById`.
       added.forEach((asset, index) => {
         const drift = index * PLACEMENT_DRIFT;
-        placeAsset(asset.id, {
+        placeAsset(asset, {
           x: (at?.x ?? 50) + drift,
           y: (at?.y ?? 50) + drift,
         });
       });
     },
-    [library, placeAsset],
+    [library, placeAsset, onOpenPanel],
   );
 
   const picker = useFilePicker(
@@ -232,7 +246,7 @@ export function Workspace({ className }: WorkspaceProps) {
                 interaction={canvas}
                 boundary={pane}
                 interactive={!isPanning}
-                onPlaceAsset={placeAsset}
+                onPlaceAsset={placeAssetById}
                 onDropFiles={(files, at) => void uploadAndPlace(files, at)}
                 onBrowse={picker.open}
               />

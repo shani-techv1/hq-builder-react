@@ -25,7 +25,7 @@ import { useFilePicker } from "@/hooks/use-file-picker";
  * to outlive that.
  */
 export function GraphicsPanel() {
-  const { library, placeAsset } = useEditorState();
+  const { library, placeAsset, placeAssetById } = useEditorState();
   const { assets, visibleAssets, uploads, rejections, previewAsset, search } =
     library;
 
@@ -87,7 +87,7 @@ export function GraphicsPanel() {
             <AssetGrid
               assets={visibleAssets}
               onOpen={library.openPreview}
-              onPlace={placeAsset}
+              onPlace={placeAssetById}
               onRename={library.renameAsset}
               onDuplicate={library.duplicateAsset}
               onToggleFavorite={library.toggleFavorite}
@@ -105,7 +105,7 @@ export function GraphicsPanel() {
             assets={assets}
             onClose={library.closePreview}
             onOpenAsset={library.openPreview}
-            onPlace={() => placeAsset(previewAsset.id)}
+            onPlace={() => placeAsset(previewAsset)}
             onRename={(name) => library.renameAsset(previewAsset.id, name)}
             onToggleFavorite={() => library.toggleFavorite(previewAsset.id)}
             onDelete={() => library.deleteAsset(previewAsset.id)}
