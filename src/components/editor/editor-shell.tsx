@@ -2,6 +2,7 @@
 
 import * as React from "react";
 
+import { AccountMenu } from "@/components/account/account-menu";
 import {
   EditorStateProvider,
   useEditorState,
@@ -76,9 +77,15 @@ export function EditorShell() {
     return adapter.saveDesign(source());
   }, []);
 
-  const { status, markDirty, save } = useSaveStatus(
+  /**
+   * Resolved once, for the same reason `persist` is resolved per call: the
+   * adapter is installed before React mounts and never changes afterwards.
+   */
+  const isEmbedded = getCommerceAdapter() !== null;
+
+  const { status, markDirty, markSaved, save } = useSaveStatus(
     "saved",
-    getCommerceAdapter() ? persist : undefined,
+    isEmbedded ? persist : undefined,
   );
 
   const handleDesignNameChange = (name: string) => {
@@ -113,8 +120,13 @@ export function EditorShell() {
     >
       {/* The provider wraps the header too, so the file menu can reach the
           design it is about to export. It renders no element of its own. */}
+      {/* Standalone, the draft is the only place the sheet is kept, so the
+          autosave behind it is what the indicator should follow. Embedded,
+          "Saved" has to keep meaning the storefront has it — a record in this
+          browser is not the shopper's design reaching the shop. */}
       <EditorStateProvider
         onDesignChange={markDirty}
+        onDraftSaved={isEmbedded ? undefined : markSaved}
         designName={designName}
         onDesignNameChange={setDesignName}
       >
@@ -127,6 +139,7 @@ export function EditorShell() {
             <>
               <DesignFileMenu />
               <SheetCartActions />
+              <AccountMenu />
             </>
           }
         />

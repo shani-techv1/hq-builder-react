@@ -106,6 +106,13 @@ const EditorStateContext = React.createContext<EditorState | null>(null);
 export interface EditorStateProviderProps {
   /** Called whenever something happens that should count against the save. */
   onDesignChange?: () => void;
+  /**
+   * Called when the local draft has been written.
+   *
+   * Left unset wherever the design has somewhere further to go than this
+   * browser, so that "Saved" cannot come to mean "saved locally".
+   */
+  onDraftSaved?: () => void;
   /** The design's name, carried into drafts and exports. */
   designName: string;
   /** Set when a restored design brings its own name. */
@@ -121,6 +128,7 @@ export interface EditorStateProviderProps {
  */
 export function EditorStateProvider({
   onDesignChange,
+  onDraftSaved,
   designName,
   onDesignNameChange,
   children,
@@ -295,6 +303,7 @@ export function EditorStateProvider({
     assets: library.assets,
     name: designName,
     onRestore: restoreDesign,
+    onSaved: onDraftSaved,
   });
 
   /**

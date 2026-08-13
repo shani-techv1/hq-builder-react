@@ -11,6 +11,15 @@ export interface SaveStatusController {
   status: SaveState;
   /** Mark the design as having unsaved changes. */
   markDirty: () => void;
+  /**
+   * Report that the design has been persisted by something other than {@link save}
+   * — the local draft autosave.
+   *
+   * Only meaningful where the draft *is* the persistence. Wherever a design has
+   * somewhere further to go, saying "Saved" for a write that never left the
+   * browser is the failure this indicator exists to prevent.
+   */
+  markSaved: () => void;
   /** Run a save — no-op while one is already in flight. */
   save: () => void;
   /** The last save's failure, cleared when the next one starts. */
@@ -61,6 +70,14 @@ export function useSaveStatus(
     apply("unsaved");
   }, [apply]);
 
+  const markSaved = React.useCallback(() => {
+    // A save in flight settles the status itself, and its result is the one
+    // that counts — an autosave landing mid-request must not pre-empt it.
+    if (statusRef.current === "saving") return;
+    if (timer.current) clearTimeout(timer.current);
+    apply("saved");
+  }, [apply]);
+
   const save = React.useCallback(() => {
     if (statusRef.current === "saving") return;
     if (timer.current) clearTimeout(timer.current);
@@ -89,5 +106,5 @@ export function useSaveStatus(
     );
   }, [apply]);
 
-  return { status, markDirty, save, error };
+  return { status, markDirty, markSaved, save, error };
 }

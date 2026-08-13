@@ -45,6 +45,14 @@ export interface UseDraftRecoveryOptions {
   name: string;
   /** Applies a restored design — from the draft, or from an imported file. */
   onRestore: (design: RestoredDesign) => void;
+  /**
+   * Called once a write has landed, so the header can confirm it.
+   *
+   * Optional because the draft only speaks for the whole design where there is
+   * nowhere else for it to go; embedded in a storefront the save indicator has
+   * to keep following the request to the shop instead.
+   */
+  onSaved?: () => void;
 }
 
 /**
@@ -60,6 +68,7 @@ export function useDraftRecovery({
   assets,
   name,
   onRestore,
+  onSaved,
 }: UseDraftRecoveryOptions): DraftRecovery {
   const [status, setStatus] = React.useState<RecoveryStatus>("checking");
   const [draft, setDraft] = React.useState<RestoredDesign | null>(null);
@@ -85,9 +94,9 @@ export function useDraftRecovery({
     };
   }, []);
 
-  const latest = React.useRef({ onRestore, draft });
+  const latest = React.useRef({ onRestore, draft, onSaved });
   React.useEffect(() => {
-    latest.current = { onRestore, draft };
+    latest.current = { onRestore, draft, onSaved };
   });
 
   const continueDraft = React.useCallback(() => {
@@ -107,11 +116,26 @@ export function useDraftRecovery({
   React.useEffect(() => {
     if (status !== "ready") return;
 
+    /**
+     * Set once a later edit has superseded this write.
+     *
+     * IndexedDB resolves on its own schedule, so without this a slow put could
+     * report success after the design had moved on — and the header would read
+     * "Saved" over changes still held only in memory.
+     */
+    let superseded = false;
+
     const timer = setTimeout(() => {
+      const confirm = (stored: boolean) => {
+        if (stored && !superseded) latest.current.onSaved?.();
+      };
+
       // An empty sheet is not a draft. Clearing rather than storing it is what
       // stops the recovery dialog appearing after the user tidies up.
       if (document.objects.length === 0 && assets.length === 0) {
-        void clearDraft();
+        // Still a save: with the record gone, what is stored and what is on
+        // screen agree, which is all the indicator claims.
+        void clearDraft().then(() => confirm(true));
         return;
       }
 
@@ -129,10 +153,13 @@ export function useDraftRecovery({
           files,
           savedAt: new Date().toISOString(),
         }),
-      );
+      ).then(confirm);
     }, AUTOSAVE_DELAY_MS);
 
-    return () => clearTimeout(timer);
+    return () => {
+      superseded = true;
+      clearTimeout(timer);
+    };
   }, [status, document, assets, name]);
 
   return { status, draft, continueDraft, startNew };

@@ -47,6 +47,8 @@ export default defineConfig({
      * the bundle to whichever machine happened to build it.
      */
     "process.env.NEXT_PUBLIC_CANVA_API_URL": "undefined",
+    // Same arrangement for the account service — see `__AUTH_API_URL__`.
+    "process.env.NEXT_PUBLIC_AUTH_API_URL": "undefined",
   },
   experimental: {
     renderBuiltUrl(filename) {
