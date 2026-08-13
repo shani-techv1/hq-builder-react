@@ -1,12 +1,20 @@
 /**
- * Accounts: creating one, signing into it, and remembering who is signed in.
+ * Accounts: creating one, proving the address is real, signing in, and
+ * remembering who is signed in.
+ *
+ * Creating an account is two steps, not one. `/api/auth/signup` sends a code to
+ * the address and returns no user; nothing can be signed in until
+ * `/api/auth/verify-otp` accepts that code. Until then the address is a claim,
+ * and `/api/auth/login` refuses it with `needsVerification` — which is the
+ * signal that puts an existing user back on the code screen rather than
+ * telling them their password is wrong.
  *
  * What the service gives back is a user record and nothing else — no token, no
  * cookie, and there is no endpoint that answers "who am I". So being signed in
  * is a fact this browser remembers rather than a credential it holds: it
  * personalises the editor, and it cannot authorise anything on its own. When
  * the service does start issuing a token, it goes into the store below and
- * travels out of {@link post} — the only two places that would change.
+ * travels out of {@link request} — the only two places that would change.
  *
  * A password is never stored. It goes into the one request that needs it and
  * is not written to storage, kept in the session, or logged.
@@ -64,6 +72,12 @@ export interface Registration extends Credentials {
   name: string;
 }
 
+/** The code from the email, against the address it was sent to. */
+export interface OtpSubmission {
+  email: string;
+  otp: string;
+}
+
 /* ------------------------------ Text hygiene ------------------------------ */
 
 /**
@@ -100,6 +114,12 @@ const clean = (value: string, limit: number) =>
 export type AuthErrorCode =
   | "INVALID_INPUT"
   | "INVALID_CREDENTIALS"
+  /** The password was right, but the address has never been confirmed. */
+  | "EMAIL_NOT_VERIFIED"
+  /** The code was wrong, already used, or has expired. */
+  | "INVALID_OTP"
+  /** No account under that address — nothing to verify or send a code to. */
+  | "ACCOUNT_NOT_FOUND"
   | "INSECURE_ENDPOINT"
   | "TOO_MANY_ATTEMPTS"
   | "TIMEOUT"
@@ -156,13 +176,27 @@ function assertSecureEndpoint(): void {
 }
 
 function codeFor(status: number): AuthErrorCode {
+  // 403 is the service's "email not verified", which {@link request} has
+  // already turned into its own code by the time this is reached.
   if (status === 401 || status === 403) return "INVALID_CREDENTIALS";
+  if (status === 404) return "ACCOUNT_NOT_FOUND";
   if (status === 429) return "TOO_MANY_ATTEMPTS";
   // Everything the service rejects — a malformed email, a short password, an
   // address already registered — comes back as a 400 with the reason in `error`.
   if (status === 400 || status === 409 || status === 422) return "INVALID_INPUT";
   return "REQUEST_FAILED";
 }
+
+/**
+ * A rejected code, told apart from a malformed request.
+ *
+ * The service answers both with a 400 and prose. The difference matters —
+ * a wrong code is a guess and counts towards the local brake, a missing field
+ * is a bug here — and the fields are validated before the request is sent, so
+ * a 400 from the verify endpoint is a rejected code by elimination.
+ */
+const codeForVerify = (status: number): AuthErrorCode =>
+  status === 400 ? "INVALID_OTP" : codeFor(status);
 
 /**
  * The service's own wording for a failure, when it sent one.
@@ -204,7 +238,12 @@ function readUser(value: unknown): AccountUser | null {
 }
 
 /**
- * Both endpoints in one shape: post JSON, get a user or a reason back.
+ * Every endpoint in one shape: post JSON, get an envelope or a reason back.
+ *
+ * The envelope is returned rather than a user, because only two of the four
+ * endpoints describe one — signing up and resending a code answer with a
+ * message and nothing else, and a caller that needs a user says so by reading
+ * one out with {@link userFrom}.
  *
  * Only `Content-Type` is sent. The service's CORS policy allows that header
  * alone, so anything else would fail the preflight rather than the request.
@@ -212,7 +251,11 @@ function readUser(value: unknown): AccountUser | null {
  * cookies, no `Referer` disclosing which design the user was editing, and no
  * cached copy of an authentication response left in the browser's store.
  */
-async function post(path: string, body: unknown): Promise<AccountUser> {
+async function request(
+  path: string,
+  body: unknown,
+  statusCode: (status: number) => AuthErrorCode = codeFor,
+): Promise<Record<string, unknown>> {
   assertSecureEndpoint();
 
   let response: Response;
@@ -252,13 +295,69 @@ async function post(path: string, body: unknown): Promise<AccountUser> {
   // `success` is checked as well as the status, so a 200 carrying a failure
   // envelope cannot be read as a signed-in user.
   if (!response.ok || !isRecord(payload) || payload.success !== true) {
+    // An unconfirmed address is a step to take, not a failure to report: it is
+    // the one rejection the dialog answers by moving forward rather than by
+    // showing the message. The flag is the service's, and the status backs it
+    // up in case a future response drops it.
+    const unverified =
+      response.status === 403 ||
+      (isRecord(payload) && payload.needsVerification === true);
+
     throw new AuthError(
-      codeFor(response.status),
+      unverified ? "EMAIL_NOT_VERIFIED" : statusCode(response.status),
       messageFrom(payload) ?? "Something went wrong. Please try again.",
     );
   }
 
-  const user = readUser(payload.data);
+  return payload;
+}
+
+/**
+ * The user in a response, wherever the endpoint chose to put it.
+ *
+ * Login nests it under `data`; the verify endpoint is documented only by the
+ * four calls it was handed over in, and answers a correct code with a message.
+ * Reading all three shapes costs a line each and means a service that starts
+ * returning a user on verification is used immediately rather than being
+ * followed by a redundant login — see {@link verifyOtp} for the fallback when
+ * it doesn't.
+ */
+function userFrom(payload: Record<string, unknown>): AccountUser | null {
+  const { data } = payload;
+  if (isRecord(data)) {
+    const nested = readUser(data.user);
+    if (nested) return nested;
+  }
+  return readUser(data) ?? readUser(payload.user);
+}
+
+/**
+ * Register, and get a code sent to the address.
+ *
+ * No user comes back and none is expected: the account exists but is inert
+ * until {@link verifyOtp} accepts the code. An address that is already
+ * registered but unverified is answered the same way, with a fresh code, so
+ * someone who lost the first email can simply sign up again.
+ *
+ * Fields are trimmed and bounded on the way out. The service applies no length
+ * limit of its own — it will hash an eight-kilobyte password — so the cap is
+ * what keeps this client from being the thing that sends one.
+ */
+export async function signUp(details: Registration): Promise<void> {
+  await request("/api/auth/signup", {
+    name: details.name.trim().slice(0, MAX_NAME_LENGTH),
+    email: details.email.trim().slice(0, MAX_EMAIL_LENGTH),
+    password: details.password.slice(0, MAX_PASSWORD_LENGTH),
+  });
+}
+
+export async function signIn(credentials: Credentials): Promise<AccountUser> {
+  const payload = await request("/api/auth/login", {
+    email: credentials.email.trim().slice(0, MAX_EMAIL_LENGTH),
+    password: credentials.password.slice(0, MAX_PASSWORD_LENGTH),
+  });
+
+  const user = userFrom(payload);
   if (!user) {
     throw new AuthError(
       "REQUEST_FAILED",
@@ -269,28 +368,29 @@ async function post(path: string, body: unknown): Promise<AccountUser> {
 }
 
 /**
- * Register, and get the new account back.
+ * Confirm the address with the code from the email.
  *
- * Signing up *is* signing in here: the response is the same user record login
- * returns, so making someone log in again immediately after would ask them for
- * a password the service has already accepted.
- *
- * Fields are trimmed and bounded on the way out. The service applies no length
- * limit of its own — it will hash an eight-kilobyte password — so the cap is
- * what keeps this client from being the thing that sends one.
+ * Resolves with the user when the service describes one, and with `null` when
+ * it only confirms — in which case the account is now verified and a normal
+ * sign-in is what establishes the session. Both are successes; only a throw
+ * means the code was refused.
  */
-export const signUp = (details: Registration): Promise<AccountUser> =>
-  post("/api/signup", {
-    name: details.name.trim().slice(0, MAX_NAME_LENGTH),
-    email: details.email.trim().slice(0, MAX_EMAIL_LENGTH),
-    password: details.password.slice(0, MAX_PASSWORD_LENGTH),
-  });
+export const verifyOtp = (submission: OtpSubmission): Promise<AccountUser | null> =>
+  request(
+    "/api/auth/verify-otp",
+    {
+      email: submission.email.trim().slice(0, MAX_EMAIL_LENGTH),
+      otp: submission.otp.trim().slice(0, OTP_LENGTH),
+    },
+    codeForVerify,
+  ).then(userFrom);
 
-export const signIn = (credentials: Credentials): Promise<AccountUser> =>
-  post("/api/login", {
-    email: credentials.email.trim().slice(0, MAX_EMAIL_LENGTH),
-    password: credentials.password.slice(0, MAX_PASSWORD_LENGTH),
+/** Send another code to an address that hasn't been confirmed yet. */
+export async function resendOtp(email: string): Promise<void> {
+  await request("/api/auth/resend-otp", {
+    email: email.trim().slice(0, MAX_EMAIL_LENGTH),
   });
+}
 
 /* ------------------------------- Validation ------------------------------- */
 
@@ -298,6 +398,9 @@ export const MAX_NAME_LENGTH = 80;
 
 /** The longest address SMTP will carry (RFC 5321). */
 export const MAX_EMAIL_LENGTH = 254;
+
+/** Digits in the emailed code, as the service issues it. */
+export const OTP_LENGTH = 6;
 
 /**
  * Stricter than the service's own six-character floor, and deliberately so.
@@ -373,6 +476,23 @@ export function emailError(email: string): string | null {
   if (value.length > MAX_EMAIL_LENGTH) return "That email address is too long.";
   if (hasUnsafeCharacters(value)) return "Enter a valid email address.";
   return EMAIL_PATTERN.test(value) ? null : "Enter a valid email address.";
+}
+
+/**
+ * Only what the code obviously is, so a typo costs a keystroke.
+ *
+ * The service can't tell a malformed code from a wrong one — both are a 400
+ * with prose — so checking the shape here is also what lets a rejection from
+ * it be read as a wrong guess and counted as one.
+ */
+const OTP_PATTERN = new RegExp(`^\\d{${OTP_LENGTH}}$`);
+
+export function otpError(otp: string): string | null {
+  const value = otp.trim();
+  if (!value) return "Enter the code we emailed you.";
+  return OTP_PATTERN.test(value)
+    ? null
+    : `Enter the ${OTP_LENGTH}-digit code from the email.`;
 }
 
 /**

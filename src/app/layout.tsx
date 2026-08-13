@@ -8,6 +8,7 @@ import {
   Pacifico,
   Playfair_Display,
 } from "next/font/google";
+import { ToastProvider } from "@/components/ui/toast";
 import "./globals.css";
 
 // `--font-sans` is what the Tailwind theme maps `font-sans` onto, so the font
@@ -100,7 +101,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${ARTWORK_FONT_CLASSES} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col overflow-hidden">
-        {children}
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );

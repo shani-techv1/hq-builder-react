@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 
 import "./app/globals.css";
 import { EditorShell } from "@/components/editor/editor-shell";
+import { ToastProvider } from "@/components/ui/toast";
 import { setCommerceAdapter, type DesignPayload } from "@/lib/commerce";
 import {
   addItemsToCart,
@@ -169,7 +170,12 @@ function boot() {
   container.innerHTML = "";
   ReactDOM.createRoot(container).render(
     <React.StrictMode>
-      <EditorShell />
+      {/* The standalone app gets this from its root layout, which the
+          storefront never loads. Without it the toast manager has nowhere to
+          render and every message is raised into nothing. */}
+      <ToastProvider>
+        <EditorShell />
+      </ToastProvider>
     </React.StrictMode>,
   );
 }
