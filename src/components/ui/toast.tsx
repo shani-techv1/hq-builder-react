@@ -18,20 +18,31 @@ import { cn } from "@/lib/utils";
 const manager = Toast.createToastManager();
 
 /**
- * Two kinds, because a toast is either good news or bad news.
+ * Three kinds: it worked, it worked but look at this, it failed.
  *
  * Errors are announced urgently and given longer on screen: they are read once
  * and cannot be brought back, and the reason a request failed is worth more
- * than the confirmation that one succeeded.
+ * than the confirmation that one succeeded. A warning gets the same dwell time
+ * and none of the urgency — nothing went wrong, so it must not interrupt.
  */
 export const toast = {
   success(title: string, description?: string) {
     manager.add({ type: "success", title, description });
   },
+  warning(title: string, description?: string) {
+    manager.add({ type: "warning", title, description, timeout: 8000 });
+  },
   error(title: string, description?: string) {
     manager.add({ type: "error", title, description, priority: "high", timeout: 8000 });
   },
 };
+
+/** Icon and colour per kind. Anything unrecognised is treated as good news. */
+const TOAST_STYLES = {
+  success: { icon: CircleCheck, surface: "bg-primary-soft text-primary" },
+  warning: { icon: TriangleAlert, surface: "bg-amber-100 text-amber-700" },
+  error: { icon: TriangleAlert, surface: "bg-destructive/10 text-destructive" },
+} as const;
 
 /** The viewport, and everything mounted into it. Wraps the app once. */
 export function ToastProvider({ children }: { children: React.ReactNode }) {
@@ -64,7 +75,9 @@ function ToastList() {
   const { toasts } = Toast.useToastManager();
 
   return toasts.map((entry) => {
-    const failed = entry.type === "error";
+    const { icon: Icon, surface } =
+      TOAST_STYLES[entry.type as keyof typeof TOAST_STYLES] ??
+      TOAST_STYLES.success;
 
     return (
       <Toast.Root
@@ -82,16 +95,10 @@ function ToastList() {
             aria-hidden
             className={cn(
               "mt-px grid size-7 shrink-0 place-items-center rounded-lg",
-              failed
-                ? "bg-destructive/10 text-destructive"
-                : "bg-primary-soft text-primary",
+              surface,
             )}
           >
-            {failed ? (
-              <TriangleAlert className="size-4" strokeWidth={2} />
-            ) : (
-              <CircleCheck className="size-4" strokeWidth={2} />
-            )}
+            <Icon className="size-4" strokeWidth={2} />
           </span>
 
           <div className="min-w-0 flex-1">

@@ -11,6 +11,8 @@ export interface LayerListProps {
   /** Objects in canvas order — bottom-most first. */
   objects: CanvasObject[];
   selectedIds: string[];
+  /** Objects the sheet's print checks flagged — marked, never hidden. */
+  warnedIds?: ReadonlySet<string>;
   /** Receives the new canvas order, bottom-most first. */
   onReorder: (ids: string[]) => void;
   onSelect: (id: string, additive: boolean) => void;
@@ -35,6 +37,7 @@ export interface LayerListProps {
 export function LayerList({
   objects,
   selectedIds,
+  warnedIds,
   onReorder,
   className,
   ...handlers
@@ -56,6 +59,7 @@ export function LayerList({
             key={object.id}
             object={object}
             isSelected={selectedIds.includes(object.id)}
+            hasWarning={warnedIds?.has(object.id) ?? false}
             {...handlers}
           />
         ))}

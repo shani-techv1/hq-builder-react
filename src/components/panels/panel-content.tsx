@@ -2,9 +2,11 @@
 
 import * as React from "react";
 
+import { AutofillPanel } from "@/components/autofill/autofill-panel";
 import { CanvaPanel } from "@/components/canva/canva-panel";
 import { InspectorContent } from "@/components/inspector/inspector-content";
 import { LayersPanel } from "@/components/layers/layers-panel";
+import { PreflightPanel } from "@/components/preflight/preflight-panel";
 import { GraphicsPanel } from "@/components/uploads/graphics-panel";
 import type { PanelId } from "@/lib/navigation";
 
@@ -26,7 +28,9 @@ export interface PanelBodyProps {
 const PANELS: Record<PanelId, React.ComponentType<PanelBodyProps>> = {
   graphics: GraphicsPanel,
   canva: CanvaPanel,
+  autofill: AutofillPanel,
   layers: LayersPanel,
+  preflight: PreflightPanel,
   // Brings its own header strip and scroll region rather than using PanelBody,
   // because its contents change with the selection and the strip is what says
   // which of its four states you are looking at.

@@ -337,6 +337,17 @@ export function layerLabel(object: CanvasObject): string {
 }
 
 /**
+ * What a copy is called: `"Flame sticker"` → `"Flame sticker copy 3"`.
+ *
+ * The number matters once a fill makes thirty of them — a layer list of thirty
+ * identically named rows is a list you cannot navigate. Any existing suffix is
+ * replaced rather than appended to, so copying a copy gives "copy 4" instead
+ * of "copy 3 copy 4".
+ */
+export const copyName = (name: string, sequence: number): string =>
+  `${name.replace(/ copy(?: \d+)?$/, "")} copy ${sequence}`;
+
+/**
  * Apply a renamed first line back to the text, keeping the rest.
  *
  * Renaming a layer edits the line the name came from; lines below it are not

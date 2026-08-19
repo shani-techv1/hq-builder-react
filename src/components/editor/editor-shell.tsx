@@ -16,10 +16,13 @@ import { PanelContent } from "@/components/panels/panel-content";
 import { PanelHeader } from "@/components/panels/panel-header";
 import { SlidingPanel } from "@/components/panels/sliding-panel";
 import { Sidebar } from "@/components/sidebar/sidebar";
+import { toast } from "@/components/ui/toast";
 import { usePanelController } from "@/hooks/use-panel-controller";
 import { useSaveStatus } from "@/hooks/use-save-status";
 import { getCommerceAdapter, getDesignSource } from "@/lib/commerce";
-import { findNavItem } from "@/lib/navigation";
+import { findNavItem, type PanelId } from "@/lib/navigation";
+import { summarisePreflight } from "@/lib/preflight";
+import type { SaveState } from "@/lib/workspace";
 
 const DEFAULT_DESIGN_NAME = "Untitled gang sheet";
 
@@ -38,6 +41,80 @@ function DraftRecoveryGate() {
       draft={recovery.draft}
       onContinue={recovery.continueDraft}
       onStartNew={recovery.startNew}
+    />
+  );
+}
+
+/**
+ * The header, with Save reporting whatever the sheet's checks found.
+ *
+ * Warned as the save starts rather than after it lands, because the warning is
+ * about the artwork and not about whether the save worked — and it never
+ * stands in the way of one: an overlap can be the design, and artwork under
+ * 300 DPI can still be fine for the job.
+ *
+ * Its own component because the checks come from the design and the save comes
+ * from the shell above the provider; this is where the two meet.
+ */
+function ShellHeader({
+  designName,
+  onDesignNameChange,
+  saveStatus,
+  onSave,
+}: {
+  designName: string;
+  onDesignNameChange: (name: string) => void;
+  saveStatus: SaveState;
+  onSave: () => void;
+}) {
+  const { preflight } = useEditorState();
+
+  const handleSave = () => {
+    const summary = summarisePreflight(preflight);
+    if (summary) {
+      toast.warning(
+        "Check this sheet before printing",
+        `${summary}. Open Checks in the left rail to review.`,
+      );
+    }
+    onSave();
+  };
+
+  return (
+    <EditorHeader
+      designName={designName}
+      onDesignNameChange={onDesignNameChange}
+      saveStatus={saveStatus}
+      onSave={handleSave}
+      actions={
+        <>
+          <DesignFileMenu />
+          <SheetCartActions />
+          <AccountMenu />
+        </>
+      }
+    />
+  );
+}
+
+/** The rail, badged with the number of warnings waiting in Checks. */
+function ShellSidebar({
+  activePanel,
+  rememberedPanel,
+  onSelect,
+}: {
+  activePanel: PanelId | null;
+  rememberedPanel: PanelId | null;
+  onSelect: (id: PanelId) => void;
+}) {
+  const { preflight } = useEditorState();
+
+  return (
+    <Sidebar
+      activePanel={activePanel}
+      rememberedPanel={rememberedPanel}
+      badges={{ preflight: preflight.total }}
+      onSelect={onSelect}
     />
   );
 }
@@ -130,25 +207,18 @@ export function EditorShell() {
         designName={designName}
         onDesignNameChange={setDesignName}
       >
-        <EditorHeader
+        <ShellHeader
           designName={designName}
           onDesignNameChange={handleDesignNameChange}
           saveStatus={status}
           onSave={save}
-          actions={
-            <>
-              <DesignFileMenu />
-              <SheetCartActions />
-              <AccountMenu />
-            </>
-          }
         />
 
         <DraftRecoveryGate />
 
         <div className="flex min-h-0 flex-1">
           <div className="h-full shrink-0">
-            <Sidebar
+            <ShellSidebar
               activePanel={activePanel}
               rememberedPanel={rememberedPanel}
               onSelect={selectPanel}

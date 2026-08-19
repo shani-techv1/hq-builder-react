@@ -226,6 +226,15 @@ export function toInches(value: number, unit: MeasurementUnit): number {
 export const PRINT_READY_DPI = 300;
 
 /**
+ * Margin kept clear of the sheet's edge, in inches.
+ *
+ * Transfer film is cut to size after printing, and a cut is never exactly on
+ * the line. Artwork inside this band survives being trimmed a little short;
+ * artwork on the edge comes back clipped.
+ */
+export const SHEET_SAFE_MARGIN_IN = 0.25;
+
+/**
  * Real print resolution: how many of the file's own pixels land in each inch
  * of the printed result.
  *

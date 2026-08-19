@@ -15,7 +15,7 @@ import { PanelBody } from "@/components/panels/panel-body";
  * use. There is no local copy of the list.
  */
 export function LayersPanel() {
-  const { canvas } = useEditorState();
+  const { canvas, preflight } = useEditorState();
   const { objects, selectedIds } = canvas;
 
   /**
@@ -45,6 +45,9 @@ export function LayersPanel() {
       <LayerList
         objects={objects}
         selectedIds={selectedIds}
+        // Marked here as well as in Checks, because this is the list people
+        // are already looking at when they wonder which layer is the problem.
+        warnedIds={preflight.flagged}
         onReorder={canvas.setObjectOrder}
         onSelect={canvas.selectObject}
         onRename={canvas.renameObject}

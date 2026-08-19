@@ -25,6 +25,7 @@ import {
 } from "@/lib/design-document";
 import { getAssetFile, releaseImageCache } from "@/lib/image-cache";
 import { setDesignSource } from "@/lib/commerce";
+import { runPreflight, type PreflightReport } from "@/lib/preflight";
 import { renderSheetPreview } from "@/lib/sheet-preview";
 
 /**
@@ -71,6 +72,15 @@ export interface EditorState {
   library: AssetLibrary;
   /** Look up an asset by id — how a placement reaches its file's metadata. */
   findAsset: (id: string | undefined) => Asset | undefined;
+  /**
+   * Print warnings for the sheet as it currently stands.
+   *
+   * Computed here because it needs both halves of the design — the objects and
+   * the files behind them — and because the rail badge, the Checks panel, the
+   * layer list and the save warning are then four views of one result rather
+   * than four runs of the same checks.
+   */
+  preflight: PreflightReport;
   /**
    * Place an asset on the sheet, centred on `at` or on the sheet.
    *
@@ -172,6 +182,10 @@ export function EditorStateProvider({
       base.duplicateSelection();
       notify?.();
     },
+    autofillSelection: (count: number, step: { x: number; y: number }) => {
+      base.autofillSelection(count, step);
+      notify?.();
+    },
     deleteSelection: () => {
       base.deleteSelection();
       notify?.();
@@ -253,6 +267,16 @@ export function EditorStateProvider({
 
   const findAsset = (id: string | undefined) =>
     id ? library.assets.find((asset) => asset.id === id) : undefined;
+
+  /*
+   * Re-run only when the design or its files change — never on a selection, a
+   * zoom or a panel opening. The pairwise overlap pass is the expensive half,
+   * and it has no business running because someone clicked a layer.
+   */
+  const preflight = React.useMemo(
+    () => runPreflight(base.objects, base.sheetSize, library.assets),
+    [base.objects, base.sheetSize, library.assets],
+  );
 
   const placeAsset = (asset: Asset, at?: PlacementPoint) => {
     canvas.placeAsset(asset, at);
@@ -338,6 +362,7 @@ export function EditorStateProvider({
         settings,
         library,
         findAsset,
+        preflight,
         placeAsset,
         placeAssetById,
         recovery,

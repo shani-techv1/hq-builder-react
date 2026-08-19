@@ -26,13 +26,12 @@ import { KIND_LABELS, type CanvasObject } from "@/lib/canvas-objects";
 import {
   formatFileSize,
   formatUploadDate,
-  isVectorAsset,
   printReadyInches,
   type Asset,
 } from "@/lib/assets";
+import { placementResolution, renderedInches } from "@/lib/preflight";
 import {
   PRINT_READY_DPI,
-  effectiveDpi,
   fromInches,
   sheetInches,
   toInches,
@@ -100,27 +99,21 @@ export function ImageInspector({
   /* -------------------------- Print resolution -------------------------- */
 
   /** What the artwork actually measures on the sheet right now. */
-  const renderedWidth = (object.width / 100) * sheet.width;
-  const renderedHeight = (object.height / 100) * sheet.height;
+  const rendered = renderedInches(object, sheet);
 
   /**
    * Real DPI, recomputed on every resize.
    *
-   * Uploaded artwork carries no stored resolution — the same file is 600 DPI
-   * across two inches and 120 across ten — so the figure comes from the file's
-   * pixels divided by the size it is currently placed at. Objects with no
-   * asset behind them fall back to whatever their mock source declared.
+   * The same check the sheet's preflight runs, so this section and the Checks
+   * panel can never give one object two different verdicts. A warning either
+   * way, never a block: low-resolution artwork still places, and the operator
+   * decides whether it is good enough for the job.
    */
-  const isVectorSource = asset ? isVectorAsset(asset) : !object.source?.dpi;
-  const dpi = asset
-    ? isVectorSource
-      ? null
-      : effectiveDpi(asset.width, renderedWidth)
-    : (object.source?.dpi ?? null);
-
-  // A warning, never a block: low-resolution artwork still places, and the
-  // operator decides whether it is good enough for the job.
-  const isPrintReady = dpi === null || dpi >= PRINT_READY_DPI;
+  const {
+    dpi,
+    isVector: isVectorSource,
+    isPrintReady,
+  } = placementResolution(object, asset, sheet);
 
   const uploadedAt = asset?.uploadedAt ?? object.source?.uploadedAt;
 
@@ -322,8 +315,8 @@ export function ImageInspector({
             { label: "Required", value: `${PRINT_READY_DPI} DPI`, muted: true },
             {
               label: "Rendered size",
-              value: `${fromInches(renderedWidth, unit)} × ${fromInches(
-                renderedHeight,
+              value: `${fromInches(rendered.width, unit)} × ${fromInches(
+                rendered.height,
                 unit,
               )} ${unit}`,
             },

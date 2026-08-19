@@ -9,6 +9,8 @@ export interface SidebarProps {
   activePanel: PanelId | null;
   /** Last panel the user opened — kept highlighted after it closes. */
   rememberedPanel: PanelId | null;
+  /** Warning counts to badge menus with, keyed by panel. */
+  badges?: Partial<Record<PanelId, number>>;
   onSelect: (id: PanelId) => void;
   className?: string;
 }
@@ -22,6 +24,7 @@ export interface SidebarProps {
 export function Sidebar({
   activePanel,
   rememberedPanel,
+  badges,
   onSelect,
   className,
 }: SidebarProps) {
@@ -42,6 +45,7 @@ export function Sidebar({
             label={item.label}
             isActive={activePanel === item.id}
             isRemembered={activePanel === null && rememberedPanel === item.id}
+            badge={badges?.[item.id]}
             onClick={() => onSelect(item.id)}
           />
         ))}

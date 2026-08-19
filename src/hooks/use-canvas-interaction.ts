@@ -6,6 +6,7 @@ import {
   MOCK_ARTWORK,
   applyPatch,
   boundingBox,
+  copyName,
   createPlacedAsset,
   createTextObject,
   renameFirstLine,
@@ -60,6 +61,7 @@ type CanvasAction =
   | { type: "syncMetrics"; updates: ObjectPatch[] }
   | { type: "addMockArtwork" }
   | { type: "duplicate" }
+  | { type: "autofill"; count: number; step: { x: number; y: number } }
   | { type: "delete" }
   | { type: "rotate"; degrees: number }
   | { type: "toggleLock" }
@@ -242,7 +244,7 @@ function documentReducer(state: CanvasState, action: CanvasAction): CanvasState 
         .map((object) => ({
           ...object,
           id: `${object.id}-copy-${copyCount}`,
-          name: `${object.name} copy`,
+          name: copyName(object.name, copyCount),
           // Keep the copy on the sheet even when the source sits at an edge.
           x: Math.min(object.x + DUPLICATE_OFFSET, 100 - object.width),
           y: Math.min(object.y + DUPLICATE_OFFSET, 100 - object.height),
@@ -252,6 +254,50 @@ function documentReducer(state: CanvasState, action: CanvasAction): CanvasState 
       return {
         ...state,
         objects: [...state.objects, ...copies],
+        selectedIds: copies.map((copy) => copy.id),
+        copyCount,
+      };
+    }
+
+    /**
+     * A whole row or column of copies, in one edit.
+     *
+     * The offsets are worked out by `planAutofill` against the sheet, so this
+     * places what it is given without clamping: a copy nudged back inside the
+     * sheet would land on top of its neighbour, which is worse than the fill
+     * simply stopping where it ran out of room — and the plan already stopped.
+     */
+    case "autofill": {
+      if (state.selectedIds.length === 0 || action.count <= 0) return state;
+
+      const sources = state.objects.filter((object) =>
+        state.selectedIds.includes(object.id),
+      );
+      const copies: CanvasObject[] = [];
+      let copyCount = state.copyCount;
+
+      for (let index = 1; index <= action.count; index += 1) {
+        for (const object of sources) {
+          // Per copy, not per step: filling from a multi-object selection
+          // makes several copies at each step, and they each need their own
+          // id and their own name.
+          copyCount += 1;
+          copies.push({
+            ...object,
+            id: `${object.id}-copy-${copyCount}`,
+            name: copyName(object.name, copyCount),
+            x: object.x + action.step.x * index,
+            y: object.y + action.step.y * index,
+            locked: false,
+          });
+        }
+      }
+
+      return {
+        ...state,
+        objects: [...state.objects, ...copies],
+        // The copies, not the original: running the fill again then carries on
+        // from the end of the row rather than repeating over it.
         selectedIds: copies.map((copy) => copy.id),
         copyCount,
       };
@@ -493,6 +539,14 @@ export interface CanvasInteraction {
   /** Drop the mock artwork onto the sheet. */
   addMockArtwork: () => void;
   duplicateSelection: () => void;
+  /**
+   * Duplicate the selection `count` times, each copy `step` further along than
+   * the one before it — see `planAutofill`, which is what works `step` out.
+   *
+   * One undo step however many copies it makes, and the copies end up selected
+   * so a second fill continues the row instead of restarting it.
+   */
+  autofillSelection: (count: number, step: { x: number; y: number }) => void;
   deleteSelection: () => void;
   rotateSelection: (degrees: number) => void;
   toggleLockSelection: () => void;
@@ -645,6 +699,11 @@ export function useCanvasInteraction(): CanvasInteraction {
     ),
     duplicateSelection: React.useCallback(
       () => dispatch({ type: "duplicate" }),
+      [],
+    ),
+    autofillSelection: React.useCallback(
+      (count: number, step: { x: number; y: number }) =>
+        dispatch({ type: "autofill", count, step }),
       [],
     ),
     deleteSelection: React.useCallback(() => dispatch({ type: "delete" }), []),

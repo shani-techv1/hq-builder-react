@@ -2,7 +2,14 @@
 
 import * as React from "react";
 import { Reorder, useDragControls } from "framer-motion";
-import { Eye, EyeOff, GripVertical, Lock, Unlock } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  GripVertical,
+  Lock,
+  TriangleAlert,
+  Unlock,
+} from "lucide-react";
 
 import { LayerContextMenu } from "@/components/layers/layer-context-menu";
 import { InlineRenameInput } from "@/components/common/inline-rename-input";
@@ -17,6 +24,8 @@ import { cn } from "@/lib/utils";
 export interface LayerRowProps {
   object: CanvasObject;
   isSelected: boolean;
+  /** The sheet's print checks flagged this layer — see the Checks panel. */
+  hasWarning?: boolean;
   /** Shift- or meta-click arrives as `additive`. */
   onSelect: (id: string, additive: boolean) => void;
   onRename: (id: string, name: string) => void;
@@ -41,6 +50,7 @@ export interface LayerRowProps {
 export function LayerRow({
   object,
   isSelected,
+  hasWarning = false,
   onSelect,
   onRename,
   onToggleHidden,
@@ -123,7 +133,19 @@ export function LayerRow({
                 <p className="truncate text-[12px] font-semibold text-foreground">
                   {label}
                 </p>
-                <p className="truncate text-[10px] text-muted-foreground">
+                <p className="flex items-center gap-1 truncate text-[10px] text-muted-foreground">
+                  {/* Marks the layer without saying which check caught it —
+                      that belongs in Checks, where there is room to explain
+                      it and something to do about it. */}
+                  {hasWarning ? (
+                    <span
+                      title="Flagged in Checks"
+                      className="inline-flex shrink-0 items-center text-amber-600"
+                    >
+                      <TriangleAlert className="size-3" strokeWidth={2.4} aria-hidden />
+                      <span className="sr-only">Flagged in Checks</span>
+                    </span>
+                  ) : null}
                   {KIND_LABELS[object.kind]}
                 </p>
               </>
