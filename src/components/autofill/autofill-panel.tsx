@@ -54,7 +54,18 @@ export function AutofillPanel() {
   const { selectedObjects } = canvas;
   const unit = settings.unit;
 
-  const [count, setCount] = React.useState(AUTOFILL_DEFAULTS.count);
+  /**
+   * The count, or nothing at all.
+   *
+   * Empty is a state the field really has — clearing it to type a new number
+   * leaves it blank for a keystroke, and snapping to a value while someone is
+   * typing over it makes the field impossible to type into. It counts as none,
+   * so the button is off until a number is in there.
+   */
+  const [count, setCount] = React.useState<number | "">(
+    AUTOFILL_DEFAULTS.count,
+  );
+  const requestedCount = count === "" ? 0 : count;
   const [direction, setDirection] = React.useState<AutofillDirection>(
     AUTOFILL_DEFAULTS.direction,
   );
@@ -64,7 +75,7 @@ export function AutofillPanel() {
   );
 
   const plan = planAutofill(selectedObjects, canvas.sheetSize, {
-    count,
+    count: requestedCount,
     direction,
     gapInches,
     keepInSafeZone,
@@ -82,7 +93,7 @@ export function AutofillPanel() {
     );
   }
 
-  const requested = clampCopies(count);
+  const requested = clampCopies(requestedCount);
   /* Named, not counted, while there is one thing to name: "Aurora logo" says
      which piece is about to be repeated in a way that "1 image" does not. */
   const subject =
@@ -111,11 +122,15 @@ export function AutofillPanel() {
         </p>
 
         <div className="space-y-3 rounded-card border border-border bg-card p-3">
+          {/* Clears to nothing rather than to a number, and reaches zero if
+              someone types one — either way the button switches off, and the
+              field stays typeable. */}
           <PropertyInput
             label="Number of copies"
             value={count}
             onChange={setCount}
-            min={1}
+            onEmpty={() => setCount("")}
+            min={0}
             max={MAX_AUTOFILL_COPIES}
             step={1}
           />
@@ -146,7 +161,16 @@ export function AutofillPanel() {
           />
         </div>
 
-        {plan.fits === 0 ? (
+        {requested === 0 ? (
+          /* Asking for none is not a problem to warn about — it is the field
+             waiting for a number, so it says what to do rather than what is
+             wrong. */
+          <ValidationBadge
+            tone="info"
+            label="No copies yet"
+            detail={`Type how many copies to add, up to ${MAX_AUTOFILL_COPIES}.`}
+          />
+        ) : plan.fits === 0 ? (
           <ValidationBadge
             tone="warning"
             label={`No room ${directionLabel.toLowerCase()}`}

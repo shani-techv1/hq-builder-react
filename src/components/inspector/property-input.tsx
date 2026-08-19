@@ -10,6 +10,16 @@ export interface PropertyInputProps {
   label: string;
   value: number | string;
   onChange: (value: number) => void;
+  /**
+   * Called instead of `onChange` when the field is emptied.
+   *
+   * Without it an empty field falls back to the minimum, which is right for
+   * almost everything here: a position, a width or an angle is always *some*
+   * number, and leaving one blank would describe nothing. A count is the
+   * exception — "none yet" is a real answer — so that caller opts in and holds
+   * the empty value itself.
+   */
+  onEmpty?: () => void;
   /** Unit suffix rendered inside the field, e.g. `%`, `in`, `°`. */
   unit?: string;
   /** Small glyph in place of a text label — used for X/Y and W/H pairs. */
@@ -40,6 +50,7 @@ export function PropertyInput({
   label,
   value,
   onChange,
+  onEmpty,
   unit,
   glyph: Glyph,
   min = -9999,
@@ -54,7 +65,10 @@ export function PropertyInput({
   const id = React.useId();
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.value === "") return onChange(min > 0 ? min : 0);
+    if (event.target.value === "") {
+      if (onEmpty) return onEmpty();
+      return onChange(min > 0 ? min : 0);
+    }
     const parsed = Number(event.target.value);
     if (!Number.isFinite(parsed)) return;
     onChange(clamp(parsed, min, max));
