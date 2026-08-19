@@ -110,13 +110,22 @@ function Disconnected({
         resolution. You can connect more than one account.
       </p>
 
+      {/* Said before the button rather than after it: someone who presses
+          Connect and meets a Canva error should have been told first. */}
+      <ValidationBadge
+        tone="info"
+        label="Awaiting approval from Canva"
+        detail="The integration is with Canva's review team. It opens to everyone the moment they sign it off — nothing else about your sheet changes in the meantime."
+        className="mt-4 text-left"
+      />
+
       <PrimaryButton
         icon={Sparkles}
         size="md"
         block={false}
         onClick={onConnect}
         disabled={isConnecting || isChecking}
-        className="mt-4"
+        className="mt-3"
       >
         {isConnecting ? "Waiting for Canva…" : "Connect Canva"}
       </PrimaryButton>
