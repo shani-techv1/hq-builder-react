@@ -11,8 +11,13 @@
  * artwork that actually gets printed travels as the original uploads.
  */
 
-import { DEFAULT_TYPOGRAPHY, type CanvasObject } from "@/lib/canvas-objects";
+import {
+  DEFAULT_TYPOGRAPHY,
+  NEUTRAL_ADJUSTMENTS,
+  type CanvasObject,
+} from "@/lib/canvas-objects";
 import { getAssetArtwork } from "@/lib/image-cache";
+import { cssFilter, findFilterPreset } from "@/lib/image-filters";
 import { PX_PER_INCH, sheetInches } from "@/lib/workspace";
 
 /**
@@ -65,6 +70,20 @@ function paint(
 
   const artwork = object.assetId ? getAssetArtwork(object.assetId) : undefined;
   if (artwork) {
+    /*
+     * The look goes on here too, or the preview — which is what a shopper sees
+     * in their cart — would show the artwork as uploaded rather than as it will
+     * print. The caller's `save`/`restore` clears it again.
+     *
+     * A browser without `filter` on a 2D context ignores it and draws the
+     * artwork plain, which is the right way for a preview to degrade.
+     */
+    const look = cssFilter(
+      findFilterPreset(object.filter).spec,
+      object.adjustments ?? NEUTRAL_ADJUSTMENTS,
+    );
+    if (look) ctx.filter = look;
+
     ctx.drawImage(artwork.element, 0, 0, width, height);
     return;
   }

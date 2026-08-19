@@ -32,6 +32,34 @@ export interface CanvasObjectSource {
   usageCount: number;
 }
 
+/**
+ * Colour adjustments, as percentages either side of untouched.
+ *
+ * Zero is the original artwork in every field, so an object carrying no
+ * adjustments and one carrying three zeroes are the same picture — which is
+ * what lets the canvas skip the filter pass entirely for most placements.
+ */
+export interface CanvasAdjustments {
+  brightness: number;
+  contrast: number;
+  saturation: number;
+}
+
+export const NEUTRAL_ADJUSTMENTS: CanvasAdjustments = {
+  brightness: 0,
+  contrast: 0,
+  saturation: 0,
+};
+
+/** Whether anything here would change a pixel. */
+export const hasAdjustments = (
+  adjustments: CanvasAdjustments | undefined,
+): boolean =>
+  adjustments !== undefined &&
+  (adjustments.brightness !== 0 ||
+    adjustments.contrast !== 0 ||
+    adjustments.saturation !== 0);
+
 /** Text styling. Flat rather than nested so a single patch can set any of it. */
 export interface CanvasTypography {
   fontFamily: string;
@@ -98,6 +126,14 @@ export interface CanvasObject {
   flipHorizontal?: boolean;
   flipVertical?: boolean;
 
+  /**
+   * A preset look from `lib/image-filters`, by id. Absent means the artwork is
+   * drawn as it was uploaded.
+   */
+  filter?: string;
+  /** Brightness, contrast and saturation, applied over the preset. */
+  adjustments?: CanvasAdjustments;
+
   /** Present on text objects. */
   typography?: CanvasTypography;
   /** Present on anything that came from a file. */
@@ -107,15 +143,20 @@ export interface CanvasObject {
 /**
  * A change to an object.
  *
- * Typography is the one field that patches *into* rather than over: the
- * inspector sends only the property it changed, so the reducer can tell a font
- * change from a size change and history can keep them as separate steps.
+ * Typography and adjustments are the two fields that patch *into* rather than
+ * over: a caller sends only the property it changed, so the reducer can tell a
+ * font change from a size change — or brightness from contrast — and history
+ * can keep them as separate steps.
  */
-export type CanvasObjectPatch = Omit<Partial<CanvasObject>, "typography"> & {
+export type CanvasObjectPatch = Omit<
+  Partial<CanvasObject>,
+  "typography" | "adjustments"
+> & {
   typography?: Partial<CanvasTypography>;
+  adjustments?: Partial<CanvasAdjustments>;
 };
 
-/** Apply a patch, merging typography rather than replacing it wholesale. */
+/** Apply a patch, merging the nested groups rather than replacing them. */
 export function applyPatch(
   object: CanvasObject,
   patch: CanvasObjectPatch,
@@ -125,6 +166,12 @@ export function applyPatch(
     merged.typography = {
       ...(object.typography ?? DEFAULT_TYPOGRAPHY),
       ...patch.typography,
+    };
+  }
+  if (patch.adjustments) {
+    merged.adjustments = {
+      ...(object.adjustments ?? NEUTRAL_ADJUSTMENTS),
+      ...patch.adjustments,
     };
   }
   return merged;

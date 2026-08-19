@@ -44,6 +44,10 @@ export interface DesignSheetProps {
   onDropFiles: (files: File[], at: PlacementPoint) => void;
   /** Opens the Autofill panel for the selection. */
   onOpenAutofill: () => void;
+  /** Opens the Position panel for the selection. */
+  onOpenPosition: () => void;
+  /** Opens the Filters panel for the selected artwork. */
+  onOpenFilters: () => void;
   /** Opens the Settings panel on the opacity row. */
   onOpenOpacity: () => void;
   /** Opens the file dialog from the empty state's invitation. */
@@ -77,6 +81,8 @@ export function DesignSheet({
   onPlaceAsset,
   onDropFiles,
   onOpenAutofill,
+  onOpenPosition,
+  onOpenFilters,
   onOpenOpacity,
   onBrowse,
   className,
@@ -212,14 +218,21 @@ export function DesignSheet({
         selectedObjects={selectedObjects}
         selectionBox={selectionBox}
         boundary={boundary}
-        onRotate={() => interaction.rotateSelection(90)}
+        onRotate={(degrees) => interaction.rotateSelection(degrees)}
+        onFlip={(axis) =>
+          interaction.patchSelection(
+            axis === "horizontal"
+              ? { flipHorizontal: !(selectedObjects[0]?.flipHorizontal ?? false) }
+              : { flipVertical: !(selectedObjects[0]?.flipVertical ?? false) },
+          )
+        }
         onDuplicate={interaction.duplicateSelection}
         onDelete={interaction.deleteSelection}
         onToggleLock={interaction.toggleLockSelection}
         onOpenAutofill={onOpenAutofill}
+        onOpenPosition={onOpenPosition}
+        onOpenFilters={onOpenFilters}
         onOpenOpacity={onOpenOpacity}
-        onBringToFront={(id) => interaction.moveObjectToEdge(id, "front")}
-        onSendToBack={(id) => interaction.moveObjectToEdge(id, "back")}
       />
 
       <AnimatePresence>

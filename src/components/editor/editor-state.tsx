@@ -230,6 +230,10 @@ export function EditorStateProvider({
       base.moveObjectToEdge(id, edge);
       notify?.();
     },
+    stepObjectOrder: (id: string, delta: number) => {
+      base.stepObjectOrder(id, delta);
+      notify?.();
+    },
     setSheetSize: (value: string) => {
       base.setSheetSize(value);
       notify?.();

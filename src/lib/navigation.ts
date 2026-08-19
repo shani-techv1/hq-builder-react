@@ -30,7 +30,9 @@ export type PanelId =
   | "autofill"
   | "layers"
   | "preflight"
-  | "settings";
+  | "settings"
+  | "position"
+  | "filters";
 
 /**
  * A Lucide glyph, except where the entry stands for another product and its
@@ -45,6 +47,15 @@ export interface NavItem {
   /** Label rendered under the icon in the 80px rail. */
   label: string;
   icon: NavIcon;
+  /**
+   * Kept out of the rail.
+   *
+   * Some panels belong to the selection rather than to the editor — they are
+   * reached from the artwork they act on, and a rail button for them would be
+   * dead most of the time. They are still panels in every other respect, so
+   * they keep an entry here for their heading and their description.
+   */
+  hidden?: boolean;
   /** Panel heading — longer than the rail label where that reads better. */
   title: string;
   /** One-line description shown under the panel heading. */
@@ -102,7 +113,28 @@ export const NAV_ITEMS: NavItem[] = [
     title: "Settings",
     description: "Sheet setup, and the properties of anything you select.",
   },
+
+  /* Reached from the selection's own menu — see `hidden`. */
+  {
+    id: "position",
+    label: "Position",
+    icon: { kind: "glyph", glyph: Layers },
+    hidden: true,
+    title: "Position",
+    description: "Line the selection up with the sheet, and order the stack.",
+  },
+  {
+    id: "filters",
+    label: "Filters",
+    icon: { kind: "glyph", glyph: SlidersHorizontal },
+    hidden: true,
+    title: "Filters",
+    description: "A look for the selected artwork, and the dials behind it.",
+  },
 ];
+
+/** The entries the rail shows — everything not reached from the artwork itself. */
+export const RAIL_ITEMS: NavItem[] = NAV_ITEMS.filter((item) => !item.hidden);
 
 /** Look up a nav entry by panel id. */
 export const findNavItem = (id: PanelId): NavItem | undefined =>

@@ -16,6 +16,7 @@ import {
   type CanvasTypography,
 } from "@/lib/canvas-objects";
 import type { DecodedArtwork } from "@/lib/image-cache";
+import { fabricFilters, filterKey } from "@/lib/image-filters";
 import { fontStack } from "@/lib/fonts";
 
 /**
@@ -37,8 +38,24 @@ export interface SheetMetrics {
   height: number;
 }
 
-/** A Fabric object the canvas is managing, tagged with the state id it mirrors. */
-export type ManagedObject = FabricObject & { objectId: string };
+/**
+ * A Fabric object the canvas is managing, tagged with the state id it mirrors
+ * and — for images — with the look already burned into its pixels.
+ */
+export type ManagedObject = FabricObject & {
+  objectId: string;
+  /** See {@link applyLook}: what `filters` were last applied, as a key. */
+  lookKey?: string;
+  /**
+   * The decoded artwork behind an image, before any filtering.
+   *
+   * Tracked here rather than read back from the object, because applying a
+   * filter replaces Fabric's element with a filtered canvas — comparing
+   * against *that* would look like new artwork on every pass and re-filter the
+   * image forever.
+   */
+  sourceElement?: CanvasImageSource;
+};
 
 export const objectIdOf = (object: FabricObject): string | undefined =>
   (object as unknown as Partial<ManagedObject>).objectId;
@@ -151,7 +168,10 @@ export function createFabricObject(
       })
     : createGeneratedObject(object, shared);
 
-  return Object.assign(created, { objectId: object.id });
+  return Object.assign(created, {
+    objectId: object.id,
+    sourceElement: artwork?.element,
+  });
 }
 
 /**
@@ -261,19 +281,23 @@ export function needsRebuild(
  * changes underneath it.
  */
 function applyContent(
-  target: FabricObject,
+  target: ManagedObject,
   object: CanvasObject,
   artwork?: DecodedArtwork,
 ) {
   if (target instanceof FabricImage) {
     // Identity, not equality: the cache hands out one element per file, so a
     // different element means genuinely different artwork.
-    if (artwork && target.getElement() !== artwork.element) {
+    if (artwork && target.sourceElement !== artwork.element) {
       target.setElement(artwork.element, {
         width: artwork.width,
         height: artwork.height,
       });
+      target.sourceElement = artwork.element;
+      // New pixels, so whatever was applied to the old ones is gone with them.
+      target.lookKey = undefined;
     }
+    applyLook(target, object);
     return;
   }
 
@@ -287,6 +311,55 @@ function applyContent(
   if (!target.isEditing && target.text !== object.text) {
     target.set({ text: object.text ?? "" });
   }
+}
+
+/**
+ * Put the object's preset and adjustments onto its bitmap.
+ *
+ * Guarded by a key, because applying filters runs the whole pipeline over every
+ * pixel of a print-resolution image — at 22 inches of 300 DPI artwork that is
+ * tens of megapixels, and `applyObjectState` runs on every drag frame. The key
+ * changes only when the look does.
+ */
+function applyLook(
+  target: FabricImage & { lookKey?: string },
+  object: CanvasObject,
+) {
+  const key = filterKey(object);
+  if (target.lookKey === key) return;
+
+  target.filters = fabricFilters(object);
+
+  /*
+   * Filtering is allowed to fail; the rest of this pass is not.
+   *
+   * Fabric picks a filter backend by probing WebGL, and that probe throws
+   * outright where `WEBGL_lose_context` is missing — and `getImageData` throws
+   * on a canvas tainted by cross-origin artwork. Uncaught, either would abort
+   * `applyObjectState` before the transform below it ever ran, so one image
+   * with an awkward look would freeze the position, size and rotation of every
+   * object after it in the pass.
+   *
+   * The key is stamped either way: a look that cannot be applied here will not
+   * apply on the next frame either, and retrying it forever would cost the
+   * failure again on every render.
+   */
+  try {
+    // With no filters this restores the original element, which is how a look
+    // gets removed rather than merely stopped being added to.
+    target.applyFilters();
+  } catch {
+    /*
+     * Fabric swaps in a blank canvas to hold the filtered pixels *before* it
+     * runs the backend, so a failure part-way leaves the object drawing
+     * nothing at all. Emptying the list and re-applying takes the path above,
+     * which puts the original element back without touching a backend — so
+     * the artwork returns unfiltered rather than disappearing.
+     */
+    target.filters = [];
+    target.applyFilters();
+  }
+  target.lookKey = key;
 }
 
 /**

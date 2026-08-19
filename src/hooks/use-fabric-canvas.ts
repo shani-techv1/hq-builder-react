@@ -277,65 +277,74 @@ export function useFabricCanvas({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    /*
+     * Raised for the whole pass and lowered in `finally`.
+     *
+     * Left raised by something throwing part-way through, the canvas would stop
+     * reporting its own selections to the editor for the rest of the session —
+     * a far worse failure than whatever threw.
+     */
     applying.current = true;
+    try {
+      // Hidden objects leave the canvas but stay in state, so the layer list can
+      // still show and restore them.
+      const visible = objects.filter((object) => !object.hidden);
+      const visibleIds = new Set(visible.map((object) => object.id));
 
-    // Hidden objects leave the canvas but stay in state, so the layer list can
-    // still show and restore them.
-    const visible = objects.filter((object) => !object.hidden);
-    const visibleIds = new Set(visible.map((object) => object.id));
-
-    for (const [id, target] of registry.current) {
-      if (visibleIds.has(id)) continue;
-      discard(canvas, target);
-      registry.current.delete(id);
-    }
-
-    /* Boxes that turned out to differ from what the editor had stored. */
-    const measured: ObjectPatch[] = [];
-
-    visible.forEach((object, index) => {
-      // Canvas text never triggers a font download on its own, so every text
-      // layer asks for its own face. Already-requested faces are a no-op.
-      if (object.kind === "text") {
-        const type = object.typography ?? DEFAULT_TYPOGRAPHY;
-        requestFont(type.fontFamily, type.fontWeight);
-      }
-
-      const artwork = artworkFor(object);
-      let target = registry.current.get(object.id);
-
-      // A placeholder whose artwork has since decoded can't be patched into an
-      // image, so it is replaced. Every other change applies in place.
-      if (target && needsRebuild(target, artwork)) {
+      for (const [id, target] of registry.current) {
+        if (visibleIds.has(id)) continue;
         discard(canvas, target);
-        registry.current.delete(object.id);
-        target = undefined;
+        registry.current.delete(id);
       }
 
-      if (!target) {
-        target = createFabricObject(object, artwork);
-        registry.current.set(object.id, target);
-        canvas.add(target);
-      }
+      /* Boxes that turned out to differ from what the editor had stored. */
+      const measured: ObjectPatch[] = [];
 
-      applyObjectState(target, object, sheet, artwork);
+      visible.forEach((object, index) => {
+        // Canvas text never triggers a font download on its own, so every text
+        // layer asks for its own face. Already-requested faces are a no-op.
+        if (object.kind === "text") {
+          const type = object.typography ?? DEFAULT_TYPOGRAPHY;
+          requestFont(type.fontFamily, type.fontWeight);
+        }
 
-      // Text occupies whatever it measures, so the editor's copy of its box
-      // may now be stale. Reported after the pass rather than during it, as a
-      // non-recorded correction — see the `syncMetrics` history policy.
-      const box = measureBox(target, object, sheet);
-      if (box) measured.push({ id: object.id, patch: box });
+        const artwork = artworkFor(object);
+        let target = registry.current.get(object.id);
 
-      // Array order is the z-order; index 0 paints first.
-      canvas.moveObjectTo(target, index);
-    });
+        // A placeholder whose artwork has since decoded can't be patched into an
+        // image, so it is replaced. Every other change applies in place.
+        if (target && needsRebuild(target, artwork)) {
+          discard(canvas, target);
+          registry.current.delete(object.id);
+          target = undefined;
+        }
 
-    canvas.requestRenderAll();
-    applying.current = false;
+        if (!target) {
+          target = createFabricObject(object, artwork);
+          registry.current.set(object.id, target);
+          canvas.add(target);
+        }
 
-    // Settles in one further pass: the corrected state measures the same, so
-    // nothing is reported and the effect stops re-running.
-    if (measured.length > 0) onMetrics?.(measured);
+        applyObjectState(target, object, sheet, artwork);
+
+        // Text occupies whatever it measures, so the editor's copy of its box
+        // may now be stale. Reported after the pass rather than during it, as a
+        // non-recorded correction — see the `syncMetrics` history policy.
+        const box = measureBox(target, object, sheet);
+        if (box) measured.push({ id: object.id, patch: box });
+
+        // Array order is the z-order; index 0 paints first.
+        canvas.moveObjectTo(target, index);
+      });
+
+      canvas.requestRenderAll();
+
+      // Settles in one further pass: the corrected state measures the same, so
+      // nothing is reported and the effect stops re-running.
+      if (measured.length > 0) onMetrics?.(measured);
+    } finally {
+      applying.current = false;
+    }
     // `imageVersion` is not read here — it stands in for the cache itself, so
     // a decode that lands after a placement still reaches the canvas.
   }, [objects, sheet, imageVersion, fontVersion, onMetrics]);

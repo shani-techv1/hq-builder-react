@@ -18,15 +18,19 @@ export interface FloatingToolbarProps {
   boundary?: React.RefObject<HTMLElement | null>;
   reflowKey?: string | number;
   locked: boolean;
-  onRotate: () => void;
+  /** Clockwise degrees — negative turns the other way. */
+  onRotate: (degrees: number) => void;
+  onFlip: (axis: "horizontal" | "vertical") => void;
   onDuplicate: () => void;
   onToggleLock: () => void;
   /** Opens the Autofill panel, with this object already the selection. */
   onOpenAutofill: () => void;
+  /** Opens the Position panel — align to the sheet, and stacking order. */
+  onOpenPosition: () => void;
+  /** Opens the Filters panel for the selected artwork. */
+  onOpenFilters: () => void;
   /** Opens the Settings panel on the opacity row. */
   onOpenOpacity: () => void;
-  onBringToFront: () => void;
-  onSendToBack: () => void;
   onDelete: () => void;
 }
 
@@ -49,12 +53,13 @@ export function FloatingToolbar({
   reflowKey,
   locked,
   onRotate,
+  onFlip,
   onDuplicate,
   onToggleLock,
   onOpenAutofill,
+  onOpenPosition,
+  onOpenFilters,
   onOpenOpacity,
-  onBringToFront,
-  onSendToBack,
   onDelete,
 }: FloatingToolbarProps) {
   return (
@@ -95,10 +100,11 @@ export function FloatingToolbar({
       <SelectionOverflowMenu
         locked={locked}
         onRotate={onRotate}
+        onFlip={onFlip}
+        onOpenPosition={onOpenPosition}
+        onOpenFilters={onOpenFilters}
         onToggleLock={onToggleLock}
         onOpenOpacity={onOpenOpacity}
-        onBringToFront={onBringToFront}
-        onSendToBack={onSendToBack}
       />
     </SelectionToolbarShell>
   );

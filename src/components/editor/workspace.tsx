@@ -217,10 +217,25 @@ export function Workspace({ onOpenPanel, onOpenPanelAt, className }: WorkspacePr
             onPointerDown={(event) => {
               panHandlers.onPointerDown(event);
               if (isPanning) return;
+
+              const target = event.target as HTMLElement;
+
+              /*
+               * React events travel the component tree, not the DOM one, so a
+               * press inside a portalled menu or popover arrives here as if it
+               * had happened on the pane — those popups are rendered into
+               * `document.body` but belong to the toolbar, which is a child of
+               * this element. Deselecting on them meant every ⋯ action ran
+               * against nothing: the selection was cleared on the way down,
+               * before the item's own handler fired.
+               *
+               * The DOM is the authority on where a press actually landed.
+               */
+              if (!pane.current?.contains(target)) return;
+
               // A press that reaches the pane from outside the sheet missed
               // the artwork entirely, so it deselects. Presses inside the
               // sheet belong to the canvas, which owns hit-testing.
-              const target = event.target as HTMLElement;
               if (target.closest("[data-design-sheet]")) return;
               canvas.clearSelection();
             }}
@@ -249,6 +264,8 @@ export function Workspace({ onOpenPanel, onOpenPanelAt, className }: WorkspacePr
                 boundary={pane}
                 interactive={!isPanning}
                 onOpenAutofill={() => onOpenPanel("autofill")}
+                onOpenPosition={() => onOpenPanel("position")}
+                onOpenFilters={() => onOpenPanel("filters")}
                 onOpenOpacity={() => onOpenPanelAt("settings", "opacity")}
                 onPlaceAsset={placeAssetById}
                 onDropFiles={(files, at) => void uploadAndPlace(files, at)}

@@ -1,7 +1,7 @@
 "use client";
 
 import { SidebarItem } from "@/components/sidebar/sidebar-item";
-import { NAV_ITEMS, type PanelId } from "@/lib/navigation";
+import { RAIL_ITEMS, type PanelId } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
 export interface SidebarProps {
@@ -38,7 +38,7 @@ export function Sidebar({
       )}
     >
       <div className="scrollbar-slim flex w-full flex-1 flex-col items-center gap-1 overflow-y-auto py-3">
-        {NAV_ITEMS.map((item) => (
+        {RAIL_ITEMS.map((item) => (
           <SidebarItem
             key={item.id}
             icon={item.icon}

@@ -16,6 +16,7 @@
 import type { Asset, AssetFormat } from "@/lib/assets";
 import {
   DEFAULT_TYPOGRAPHY,
+  type CanvasAdjustments,
   type CanvasObject,
   type CanvasObjectKind,
   type CanvasTypography,
@@ -176,6 +177,17 @@ function readTypography(value: unknown): CanvasTypography | undefined {
   };
 }
 
+/** Clamped on the way in: a file could carry anything, and these drive filters. */
+function readAdjustments(value: unknown): CanvasAdjustments | undefined {
+  if (!isRecord(value)) return undefined;
+  const level = (input: unknown) => Math.max(-100, Math.min(100, num(input, 0)));
+  return {
+    brightness: level(value.brightness),
+    contrast: level(value.contrast),
+    saturation: level(value.saturation),
+  };
+}
+
 function readFill(value: unknown): CanvasObject["fill"] {
   if (!isRecord(value)) return undefined;
   const from = optStr(value.from);
@@ -239,6 +251,8 @@ function readObject(value: unknown): CanvasObject | null {
     cornerRadius: optNum(value.cornerRadius),
     flipHorizontal: optBool(value.flipHorizontal),
     flipVertical: optBool(value.flipVertical),
+    filter: optStr(value.filter),
+    adjustments: readAdjustments(value.adjustments),
     typography: readTypography(value.typography),
     source: readSource(value.source),
   };

@@ -17,16 +17,20 @@ export interface SelectionOverlayProps {
   selectionBox: SelectionBox | null;
   /** The scrolling canvas pane — keeps the toolbar inside the viewport. */
   boundary?: React.RefObject<HTMLElement | null>;
-  onRotate: () => void;
+  /** Clockwise degrees — negative turns the other way. */
+  onRotate: (degrees: number) => void;
+  onFlip: (axis: "horizontal" | "vertical") => void;
   onDuplicate: () => void;
   onDelete: () => void;
   onToggleLock: () => void;
   /** Opens the Autofill panel for what is selected. */
   onOpenAutofill: () => void;
+  /** Opens the Position panel for what is selected. */
+  onOpenPosition: () => void;
+  /** Opens the Filters panel for the selected artwork. */
+  onOpenFilters: () => void;
   /** Opens the Settings panel on the opacity row. */
   onOpenOpacity: () => void;
-  onBringToFront: (id: string) => void;
-  onSendToBack: (id: string) => void;
 }
 
 /**
@@ -45,13 +49,14 @@ export function SelectionOverlay({
   selectionBox,
   boundary,
   onRotate,
+  onFlip,
   onDuplicate,
   onDelete,
   onToggleLock,
   onOpenAutofill,
+  onOpenPosition,
+  onOpenFilters,
   onOpenOpacity,
-  onBringToFront,
-  onSendToBack,
 }: SelectionOverlayProps) {
   const isMulti = selectedObjects.length > 1;
   const primary = selectedObjects[0];
@@ -112,12 +117,13 @@ export function SelectionOverlay({
                   reflowKey={reflowKey}
                   locked={primary.locked}
                   onRotate={onRotate}
+                  onFlip={onFlip}
                   onDuplicate={onDuplicate}
                   onToggleLock={onToggleLock}
                   onOpenAutofill={onOpenAutofill}
+                  onOpenPosition={onOpenPosition}
+                  onOpenFilters={onOpenFilters}
                   onOpenOpacity={onOpenOpacity}
-                  onBringToFront={() => onBringToFront(primary.id)}
-                  onSendToBack={() => onSendToBack(primary.id)}
                   onDelete={onDelete}
                 />
               )}

@@ -72,6 +72,7 @@ type CanvasAction =
   | { type: "deleteObject"; id: string }
   | { type: "setOrder"; ids: string[] }
   | { type: "moveToEnd"; id: string; edge: "front" | "back" }
+  | { type: "stepOrder"; id: string; delta: number }
   | { type: "setSheetSize"; sheetSize: string };
 
 /**
@@ -390,6 +391,29 @@ function documentReducer(state: CanvasState, action: CanvasAction): CanvasState 
       };
     }
 
+    /**
+     * One step up or down the stack.
+     *
+     * `delta` is in paint order — +1 moves the object one place later in the
+     * array, which is one layer nearer the front. An object already at the end
+     * it is heading for stays where it is rather than wrapping around.
+     */
+    case "stepOrder": {
+      const index = state.objects.findIndex((object) => object.id === action.id);
+      if (index < 0) return state;
+
+      const target = Math.min(
+        state.objects.length - 1,
+        Math.max(0, index + action.delta),
+      );
+      if (target === index) return state;
+
+      const objects = [...state.objects];
+      const [moved] = objects.splice(index, 1);
+      objects.splice(target, 0, moved);
+      return { ...state, objects };
+    }
+
     case "setSheetSize":
       return state.sheetSize === action.sheetSize
         ? state
@@ -410,8 +434,8 @@ function documentReducer(state: CanvasState, action: CanvasAction): CanvasState 
 const patchTag = (patch: CanvasObjectPatch) =>
   Object.entries(patch)
     .map(([key, value]) =>
-      key === "typography" && value
-        ? `typography.${Object.keys(value).sort().join(".")}`
+      (key === "typography" || key === "adjustments") && value
+        ? `${key}.${Object.keys(value).sort().join(".")}`
         : key,
     )
     .sort()
@@ -574,6 +598,8 @@ export interface CanvasInteraction {
    */
   setObjectOrder: (ids: string[]) => void;
   moveObjectToEdge: (id: string, edge: "front" | "back") => void;
+  /** Move one object a single step through the stack: `+1` forward, `-1` back. */
+  stepObjectOrder: (id: string, delta: number) => void;
 
   /* ------------------------------- Sheet -------------------------------- */
   /** Sheet size preset. Part of the document, so it undoes with everything else. */
@@ -748,6 +774,10 @@ export function useCanvasInteraction(): CanvasInteraction {
     moveObjectToEdge: React.useCallback(
       (id: string, edge: "front" | "back") =>
         dispatch({ type: "moveToEnd", id, edge }),
+      [],
+    ),
+    stepObjectOrder: React.useCallback(
+      (id: string, delta: number) => dispatch({ type: "stepOrder", id, delta }),
       [],
     ),
 
