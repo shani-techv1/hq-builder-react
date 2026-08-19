@@ -26,9 +26,15 @@ export interface SelectionToolbarShellProps {
  * Positions a floating toolbar against the current selection.
  *
  * Placement flips to below the selection when there isn't room above it, and
- * is written straight onto the element's `data-placement` attribute rather
- * than held in state — measuring and then re-rendering would cost a frame of
- * the toolbar visibly jumping, and the value is pure presentation.
+ * the whole bar slides back inside the pane when centring it on a selection
+ * near an edge would hang it off one — a labelled toolbar is wide enough that
+ * a small piece of artwork by the left margin would otherwise put half the
+ * actions out of reach.
+ *
+ * Both are written straight onto the element — a data attribute and a custom
+ * property — rather than held in state: measuring and then re-rendering would
+ * cost a frame of the toolbar visibly jumping, and neither value is anything
+ * but presentation.
  */
 export function SelectionToolbarShell({
   badge,
@@ -44,20 +50,38 @@ export function SelectionToolbarShell({
     if (!element) return;
 
     const place = () => {
-      // Measure in the preferred placement, then flip only if it doesn't fit.
+      // Measure centred and in the preferred placement, then correct only what
+      // doesn't fit. Resetting first is what stops corrections compounding.
       element.dataset.placement = "above";
+      element.style.setProperty("--toolbar-shift", "0px");
       if (!bounds) return;
+
       const toolbar = element.getBoundingClientRect();
       const container = bounds.getBoundingClientRect();
+
       if (toolbar.top < container.top + EDGE_PADDING) {
         element.dataset.placement = "below";
       }
+
+      /* Left edge wins when the toolbar is wider than the pane itself: the
+         actions people reach for most are the ones at the start of it. */
+      const pastLeft = container.left + EDGE_PADDING - toolbar.left;
+      const pastRight = toolbar.right - (container.right - EDGE_PADDING);
+      const shift = pastLeft > 0 ? pastLeft : pastRight > 0 ? -pastRight : 0;
+      element.style.setProperty("--toolbar-shift", `${Math.round(shift)}px`);
     };
 
     place();
+
+    // The toolbar's own width changes under it — an action appears for one kind
+    // of artwork and not another, and a label grows while its work runs.
+    const observer = new ResizeObserver(place);
+    observer.observe(element);
+
     bounds?.addEventListener("scroll", place, { passive: true });
     window.addEventListener("resize", place);
     return () => {
+      observer.disconnect();
       bounds?.removeEventListener("scroll", place);
       window.removeEventListener("resize", place);
     };
@@ -72,7 +96,8 @@ export function SelectionToolbarShell({
       exit={{ opacity: 0, scale: 0.95, y: 4 }}
       transition={{ type: "spring", stiffness: 520, damping: 34 }}
       className={cn(
-        "absolute left-1/2 z-30 flex w-max -translate-x-1/2 flex-col items-center gap-1.5",
+        "absolute left-1/2 z-30 flex w-max flex-col items-center gap-1.5",
+        "translate-x-[calc(-50%+var(--toolbar-shift,0px))]",
         "data-[placement=above]:bottom-full data-[placement=above]:mb-3.5",
         "data-[placement=below]:top-full data-[placement=below]:mt-9",
       )}

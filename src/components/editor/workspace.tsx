@@ -248,6 +248,7 @@ export function Workspace({ onOpenPanel, onOpenPanelAt, className }: WorkspacePr
                 interaction={canvas}
                 boundary={pane}
                 interactive={!isPanning}
+                onOpenAutofill={() => onOpenPanel("autofill")}
                 onOpenOpacity={() => onOpenPanelAt("settings", "opacity")}
                 onPlaceAsset={placeAssetById}
                 onDropFiles={(files, at) => void uploadAndPlace(files, at)}

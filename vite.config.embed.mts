@@ -49,6 +49,9 @@ export default defineConfig({
     "process.env.NEXT_PUBLIC_CANVA_API_URL": "undefined",
     // Same arrangement for the account service — see `__AUTH_API_URL__`.
     "process.env.NEXT_PUBLIC_AUTH_API_URL": "undefined",
+    // And for the image service — see `__IMAGE_API_URL__`. Unset, the client
+    // falls back to the deployed backend, which is where both already live.
+    "process.env.NEXT_PUBLIC_IMAGE_API_URL": "undefined",
   },
   experimental: {
     renderBuiltUrl(filename) {

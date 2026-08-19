@@ -42,6 +42,8 @@ export interface DesignSheetProps {
   onPlaceAsset: (assetId: string, at: PlacementPoint) => void;
   /** Files dropped straight onto the sheet, to upload and then place. */
   onDropFiles: (files: File[], at: PlacementPoint) => void;
+  /** Opens the Autofill panel for the selection. */
+  onOpenAutofill: () => void;
   /** Opens the Settings panel on the opacity row. */
   onOpenOpacity: () => void;
   /** Opens the file dialog from the empty state's invitation. */
@@ -74,6 +76,7 @@ export function DesignSheet({
   interactive = true,
   onPlaceAsset,
   onDropFiles,
+  onOpenAutofill,
   onOpenOpacity,
   onBrowse,
   className,
@@ -213,7 +216,10 @@ export function DesignSheet({
         onDuplicate={interaction.duplicateSelection}
         onDelete={interaction.deleteSelection}
         onToggleLock={interaction.toggleLockSelection}
+        onOpenAutofill={onOpenAutofill}
         onOpenOpacity={onOpenOpacity}
+        onBringToFront={(id) => interaction.moveObjectToEdge(id, "front")}
+        onSendToBack={(id) => interaction.moveObjectToEdge(id, "back")}
       />
 
       <AnimatePresence>

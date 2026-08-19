@@ -21,8 +21,12 @@ export interface SelectionOverlayProps {
   onDuplicate: () => void;
   onDelete: () => void;
   onToggleLock: () => void;
+  /** Opens the Autofill panel for what is selected. */
+  onOpenAutofill: () => void;
   /** Opens the Settings panel on the opacity row. */
   onOpenOpacity: () => void;
+  onBringToFront: (id: string) => void;
+  onSendToBack: (id: string) => void;
 }
 
 /**
@@ -44,7 +48,10 @@ export function SelectionOverlay({
   onDuplicate,
   onDelete,
   onToggleLock,
+  onOpenAutofill,
   onOpenOpacity,
+  onBringToFront,
+  onSendToBack,
 }: SelectionOverlayProps) {
   const isMulti = selectedObjects.length > 1;
   const primary = selectedObjects[0];
@@ -93,6 +100,7 @@ export function SelectionOverlay({
                 />
               ) : (
                 <FloatingToolbar
+                  object={primary}
                   badge={
                     <SelectionBadge
                       label={selectionLabel(selectedObjects)}
@@ -106,7 +114,10 @@ export function SelectionOverlay({
                   onRotate={onRotate}
                   onDuplicate={onDuplicate}
                   onToggleLock={onToggleLock}
+                  onOpenAutofill={onOpenAutofill}
                   onOpenOpacity={onOpenOpacity}
+                  onBringToFront={() => onBringToFront(primary.id)}
+                  onSendToBack={() => onSendToBack(primary.id)}
                   onDelete={onDelete}
                 />
               )}
