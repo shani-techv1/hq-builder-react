@@ -86,7 +86,9 @@ export function PreflightPanel() {
     return (
       <section>
         <SectionTitle title={title} count={found} />
-        <div className="mt-2 space-y-0.5">
+        {/* Cards, so they need air between them — packed tight they read as
+            one striped block rather than as a list of separate problems. */}
+        <div className="mt-2 space-y-1.5">
           {listed.map((issue) => (
             <PreflightIssueRow
               key={issue.id}

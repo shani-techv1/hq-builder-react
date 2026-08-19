@@ -20,21 +20,26 @@ const TONES = {
   ok: {
     icon: CircleCheck,
     surface: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    accent: "border-l-emerald-400",
     iconColor: "text-emerald-600",
   },
   warning: {
     icon: TriangleAlert,
     surface: "border-amber-200 bg-amber-50 text-amber-800",
+    accent: "border-l-amber-400",
     iconColor: "text-amber-600",
   },
   error: {
     icon: CircleAlert,
     surface: "border-rose-200 bg-rose-50 text-rose-700",
+    accent: "border-l-rose-400",
     iconColor: "text-rose-600",
   },
   info: {
     icon: Info,
     surface: "border-border bg-muted text-muted-foreground",
+    // Structure without colour: neutral news has nothing to flag.
+    accent: "border-l-border",
     iconColor: "text-muted-foreground",
   },
 } as const;
@@ -53,7 +58,7 @@ export function ValidationBadge({
   compact = false,
   className,
 }: ValidationBadgeProps) {
-  const { icon: Icon, surface, iconColor } = TONES[tone];
+  const { icon: Icon, surface, accent, iconColor } = TONES[tone];
 
   if (compact) {
     return (
@@ -74,8 +79,11 @@ export function ValidationBadge({
   return (
     <div
       className={cn(
-        "flex items-start gap-2 rounded-xl border px-2.5 py-2",
+        // The accent edge is what makes a verdict scannable in a column of
+        // cards: the tone is legible from the margin, before any of it is read.
+        "flex items-start gap-2.5 rounded-xl border border-l-[3px] px-3 py-2.5",
         surface,
+        accent,
         className,
       )}
     >
@@ -87,7 +95,7 @@ export function ValidationBadge({
       <div className="min-w-0">
         <p className="text-[11.5px] font-bold leading-tight">{label}</p>
         {detail ? (
-          <p className="mt-0.5 text-[10.5px] leading-relaxed opacity-85">
+          <p className="mt-1 text-[10.5px] leading-relaxed opacity-85">
             {detail}
           </p>
         ) : null}

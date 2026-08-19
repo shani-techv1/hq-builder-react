@@ -153,15 +153,20 @@ export function AutofillPanel() {
             detail={`The next copy would fall outside ${boundary}. Move the artwork, close the gap, or fill the other way.`}
           />
         ) : plan.fits < requested ? (
+          /* A warning rather than a note: the button is about to do something
+             other than what the field above it says, and finding that out
+             afterwards means undoing and counting again. */
           <ValidationBadge
-            tone="info"
-            label={`${plan.fits} of ${requested} copies fit`}
-            detail={`The rest would fall outside ${boundary}. Duplicate adds the ${plan.fits} that fit.`}
+            tone="warning"
+            label={`Only ${plan.fits} of ${requested} will fit`}
+            detail={`The rest would fall outside ${boundary}. Duplicate places ${
+              plan.fits === 1 ? "the one that fits" : `the ${plan.fits} that fit`
+            } — close the gap or fill the other way for more.`}
           />
         ) : (
           <ValidationBadge
             tone="ok"
-            label={`${requested} ${requested === 1 ? "copy" : "copies"} fit`}
+            label={`${requested} ${requested === 1 ? "copy fits" : "copies fit"}`}
             detail={`Placed ${directionLabel.toLowerCase()}, inside ${boundary}.`}
           />
         )}
