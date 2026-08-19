@@ -11,12 +11,41 @@ import {
 import { ToastProvider } from "@/components/ui/toast";
 import "./globals.css";
 
-// `--font-sans` is what the Tailwind theme maps `font-sans` onto, so the font
-// variable has to be named for the token rather than for the typeface.
+/*
+ * Geist is artwork-only now.
+ *
+ * It used to publish itself as `--font-sans` — the token Tailwind maps
+ * `font-sans` onto — which made it the interface typeface as a side effect.
+ * The interface is set in Aktiv Grotesk, declared in globals.css, so this is
+ * named for the typeface it actually is and stays available to the canvas.
+ */
 const geistSans = Geist({
-  variable: "--font-sans",
+  variable: "--font-geist-sans",
   subsets: ["latin"],
 });
+
+/**
+ * Adobe Fonts kit that serves Aktiv Grotesk, e.g.
+ * `https://use.typekit.net/<kit>.css`.
+ *
+ * A kit rather than a self-hosted file because the family is licensed per
+ * domain — the bytes cannot be committed here. Unset, the interface falls back
+ * to the platform grotesk and everything else still works; the storefront embed
+ * takes the same URL from the page instead, since it renders no `<head>` of its
+ * own — see src/embed.tsx.
+ */
+const FONT_KIT_URL = process.env.NEXT_PUBLIC_FONT_KIT_URL;
+
+/** The kit's host, for the preconnect. `null` for a value that isn't a URL. */
+const FONT_KIT_ORIGIN = (() => {
+  if (!FONT_KIT_URL) return null;
+  try {
+    return new URL(FONT_KIT_URL).origin;
+  } catch {
+    // A misconfigured value must not take the whole layout down with it.
+    return null;
+  }
+})();
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
@@ -100,6 +129,26 @@ export default function RootLayout({
       style={ARTWORK_FONT_VARIABLES}
       className={`${geistSans.variable} ${geistMono.variable} ${ARTWORK_FONT_CLASSES} h-full antialiased`}
     >
+      {/* Hoisted into the head by React rather than wrapped in one here, which
+          is how this version of Next takes an external stylesheet. The kit is
+          two hops — the CSS, then the faces it names — so the connection is
+          opened alongside the first request rather than after it. */}
+      {FONT_KIT_URL ? (
+        <>
+          {FONT_KIT_ORIGIN ? (
+            <>
+              <link rel="preconnect" href={FONT_KIT_ORIGIN} />
+              <link
+                rel="preconnect"
+                href={FONT_KIT_ORIGIN}
+                crossOrigin="anonymous"
+              />
+            </>
+          ) : null}
+          <link rel="stylesheet" href={FONT_KIT_URL} />
+        </>
+      ) : null}
+
       <body className="flex min-h-full flex-col overflow-hidden">
         <ToastProvider>{children}</ToastProvider>
       </body>

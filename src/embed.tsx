@@ -142,9 +142,33 @@ function createAdapter(bootstrap: SheetBootstrap) {
   };
 }
 
+/**
+ * Load the interface typeface, if the page says where it lives.
+ *
+ * The standalone app links its kit from the root layout, which the storefront
+ * never loads — so the shop supplies the URL as `__FONT_KIT_URL__`, the same
+ * arrangement the service URLs use. A shop whose own theme already serves Aktiv
+ * Grotesk needs none of this: the stack in globals.css finds it either way, and
+ * without it the editor falls back to the platform grotesk rather than breaking.
+ */
+function loadFontKit() {
+  const url = (window as unknown as Record<string, unknown>).__FONT_KIT_URL__;
+  if (typeof url !== "string" || !url) return;
+  // The shop's own stylesheet may already carry it; a second copy would only
+  // cost a request.
+  if (document.querySelector(`link[href="${CSS.escape(url)}"]`)) return;
+
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = url;
+  document.head.appendChild(link);
+}
+
 function boot() {
   const container = document.getElementById(MOUNT_ID);
   if (!container) return;
+
+  loadFontKit();
 
   const bootstrap = readBootstrap();
   if (!bootstrap?.product) {

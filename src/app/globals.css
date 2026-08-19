@@ -55,6 +55,20 @@
 :root {
   --radius: 12px;
 
+  /*
+   * The interface typeface.
+   *
+   * Declared here rather than published by `next/font`, because Aktiv Grotesk
+   * is an Adobe Fonts family: it arrives from a kit on the page, not from a
+   * package the app can self-host. Anything that fails to reach the kit — a
+   * blocked request, or the embed on a shop that doesn't load it — falls
+   * through to the platform's own grotesk rather than to a serif.
+   *
+   * The faces the *artwork* is set in are a separate set entirely; see
+   * `--font-art-*` in layout.tsx.
+   */
+  --font-sans: "aktiv-grotesk", sans-serif;
+
   --background: #ffffff;
   --foreground: #1f2937;
   --card: #ffffff;
