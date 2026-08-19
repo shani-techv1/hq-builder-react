@@ -10,6 +10,7 @@ import type { CanvasInteraction } from "@/hooks/use-canvas-interaction";
 import { useFabricCanvas } from "@/hooks/use-fabric-canvas";
 import { ASSET_DRAG_TYPE } from "@/lib/assets";
 import type { PlacementPoint } from "@/lib/canvas-objects";
+import { rulerScale } from "@/lib/workspace";
 import { cn } from "@/lib/utils";
 
 /**
@@ -19,6 +20,7 @@ import { cn } from "@/lib/utils";
  */
 const MIN_EMPTY_STATE_WIDTH = 380;
 const MIN_EMPTY_STATE_HEIGHT = 300;
+
 
 export interface DesignSheetProps {
   /** Sheet dimensions in base pixels, i.e. at 100% zoom. */
@@ -122,6 +124,16 @@ export function DesignSheet({
 
   const width = (baseWidth * zoom) / 100;
   const height = (baseHeight * zoom) / 100;
+
+  /**
+   * The grid is the rulers' own scale, drawn across the sheet.
+   *
+   * Sharing `rulerScale` is what makes it a measure rather than a texture: a
+   * line falls exactly where a tick does, and the interval steps up as you zoom
+   * out — so the grid never collapses into a grey wash at 25% or thins out to
+   * nothing at 400%.
+   */
+  const { majorPx, minorPx } = rulerScale(zoom);
   const showEmptyState =
     objects.length === 0 &&
     width >= MIN_EMPTY_STATE_WIDTH &&
@@ -201,7 +213,13 @@ export function DesignSheet({
       {showGrid ? (
         <span
           aria-hidden
-          className="bg-grid-dots pointer-events-none absolute inset-0 rounded-sm opacity-70"
+          style={
+            {
+              "--grid-cell": `${majorPx}px`,
+              "--grid-subcell": `${minorPx}px`,
+            } as React.CSSProperties
+          }
+          className="bg-grid-lines pointer-events-none absolute inset-0 rounded-sm"
         />
       ) : null}
 

@@ -144,8 +144,6 @@
   }
 }
 
-/* Workspace texture behind the sheet. Much lighter than `bg-grid-dots`, which
-   is a design aid drawn on top of artwork — this one only has to hint depth. */
 /* The canvas pane still scrolls, but panning is the gesture — a scrollbar
    would be chrome over the artwork. */
 @utility scrollbar-none {
@@ -155,6 +153,7 @@
   }
 }
 
+/* Workspace texture behind the sheet — depth, not a measure. */
 @utility bg-dot-texture {
   background-image: radial-gradient(
     color-mix(in oklch, var(--foreground) 7%, transparent) 1px,
@@ -179,10 +178,34 @@
     -8px 0;
 }
 
-@utility bg-grid-dots {
-  background-image: radial-gradient(
-    color-mix(in oklch, var(--foreground) 12%, transparent) 1px,
-    transparent 0
-  );
-  background-size: 22px 22px;
+/*
+ * The sheet's measuring grid.
+ *
+ * Ruled in the sheet's own units rather than in screen pixels: `--grid-cell` is
+ * one inch at the current zoom and `--grid-subcell` its subdivision, both set
+ * by the sheet, so a line always falls where the ruler says an inch is. A grid
+ * on a fixed pixel spacing would drift out of step with the rulers at every
+ * zoom but one, which makes it decoration rather than a measure.
+ *
+ * Deliberately fainter than the workspace texture behind the sheet. It is read
+ * against artwork rather than against an empty pane, and something you place a
+ * design on top of should be found when looked for rather than seen first.
+ */
+@utility bg-grid-lines {
+  --grid-line: color-mix(in oklch, var(--foreground) 6%, transparent);
+  --grid-line-minor: color-mix(in oklch, var(--foreground) 4%, transparent);
+  /* Inch lines first, so they paint over the subdivisions they contain. */
+  background-image: linear-gradient(
+      to right,
+      var(--grid-line) 0 1px,
+      transparent 1px
+    ),
+    linear-gradient(to bottom, var(--grid-line) 0 1px, transparent 1px),
+    linear-gradient(to right, var(--grid-line-minor) 0 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line-minor) 0 1px, transparent 1px);
+  background-size:
+    var(--grid-cell) var(--grid-cell),
+    var(--grid-cell) var(--grid-cell),
+    var(--grid-subcell) var(--grid-subcell),
+    var(--grid-subcell) var(--grid-subcell);
 }
