@@ -156,6 +156,57 @@ export type CanvasObjectPatch = Omit<
   adjustments?: Partial<CanvasAdjustments>;
 };
 
+/**
+ * Keep artwork the size it really is when the sheet changes underneath it.
+ *
+ * Storing geometry as a share of the sheet is what makes a placement hold at
+ * any zoom — but a share of a *different* sheet is a different size. The
+ * presets are all 22 inches wide and differ only in length, so resizing a sheet
+ * used to leave every piece the same width and stretch it lengthways: 11% of 24
+ * inches is 2.6in, and 11% of 60 is 6.6.
+ *
+ * So the percentages are converted through the old sheet's real dimensions and
+ * back through the new one's, which leaves every piece at exactly the inches it
+ * was. `baseWidth`/`baseHeight` travel with them, or the inspector's scale
+ * control would go on measuring against a size the artwork no longer has.
+ *
+ * Positions are then clamped back onto the sheet. A piece that no longer fits
+ * on a shorter sheet keeps its size and is nudged to the edge rather than being
+ * squashed to fit: artwork printed at the wrong size is a reprint, artwork that
+ * has moved is a drag away from right.
+ */
+export function rescaleToSheet(
+  objects: CanvasObject[],
+  from: { width: number; height: number },
+  to: { width: number; height: number },
+): CanvasObject[] {
+  const scaleX = from.width / to.width;
+  const scaleY = from.height / to.height;
+  if (scaleX === 1 && scaleY === 1) return objects;
+
+  const clamp = (value: number, limit: number) =>
+    Math.min(Math.max(0, limit), Math.max(0, value));
+
+  return objects.map((object) => {
+    const width = object.width * scaleX;
+    const height = object.height * scaleY;
+
+    return {
+      ...object,
+      width,
+      height,
+      x: clamp(object.x * scaleX, 100 - width),
+      y: clamp(object.y * scaleY, 100 - height),
+      baseWidth:
+        object.baseWidth === undefined ? undefined : object.baseWidth * scaleX,
+      baseHeight:
+        object.baseHeight === undefined
+          ? undefined
+          : object.baseHeight * scaleY,
+    };
+  });
+}
+
 /** Apply a patch, merging the nested groups rather than replacing them. */
 export function applyPatch(
   object: CanvasObject,

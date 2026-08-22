@@ -9,6 +9,7 @@ import {
   copyName,
   createPlacedAsset,
   createTextObject,
+  rescaleToSheet,
   renameFirstLine,
   type CanvasObject,
   type CanvasObjectPatch,
@@ -414,10 +415,26 @@ function documentReducer(state: CanvasState, action: CanvasAction): CanvasState 
       return { ...state, objects };
     }
 
+    /**
+     * Resizing the sheet must not resize the artwork on it.
+     *
+     * The sheet is the paper, not a frame the design is scaled into — moving a
+     * job from a 22×24 to a 22×60 buys room, not bigger prints. Since geometry
+     * is a share of the sheet, that means converting every placement through
+     * the old dimensions and back through the new; see `rescaleToSheet`.
+     */
     case "setSheetSize":
       return state.sheetSize === action.sheetSize
         ? state
-        : { ...state, sheetSize: action.sheetSize };
+        : {
+            ...state,
+            sheetSize: action.sheetSize,
+            objects: rescaleToSheet(
+              state.objects,
+              sheetInches(state.sheetSize),
+              sheetInches(action.sheetSize),
+            ),
+          };
 
     default:
       return state;
