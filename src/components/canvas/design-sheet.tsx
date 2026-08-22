@@ -188,13 +188,26 @@ export function DesignSheet({
     <div
       data-design-sheet
       ref={surfaceRef}
-      style={{
-        width,
-        height,
-        // The colour is a preview of what the transfer is applied to. With the
-        // background off, the checkerboard shows the film as it really is.
-        backgroundColor: showBackground ? backgroundColor : undefined,
-      }}
+      style={
+        {
+          width,
+          height,
+          // The colour is a preview of what the transfer is applied to. With
+          // the background off, the checkerboard shows the film as it really
+          // is.
+          backgroundColor: showBackground ? backgroundColor : undefined,
+          /*
+           * A stronger check than the one on thumbnails.
+           *
+           * The utility is tuned for a swatch a few pixels across, where any
+           * more would be noise. Spread over a whole sheet at full size that
+           * same value washes out to a flat tint, and the pattern has to stay
+           * legible under the artwork — it is what says the transfer is cut
+           * out rather than printed on white.
+           */
+          "--checker": "color-mix(in oklch, var(--foreground) 16%, transparent)",
+        } as React.CSSProperties
+      }
       onDragOver={handleDragOver}
       onDragLeave={() => setIsDropTarget(false)}
       onDrop={handleDrop}

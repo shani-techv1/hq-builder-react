@@ -11,6 +11,14 @@ export interface SwatchOption {
   label: string;
 }
 
+/**
+ * `transparent` is a real CSS colour, so it paints as nothing at all.
+ *
+ * Given the checkerboard behind it, the swatch reads as the absence of a
+ * colour rather than as the panel showing through a gap in the row.
+ */
+const TRANSPARENT = "transparent";
+
 export interface SwatchPickerProps {
   swatches: SwatchOption[];
   value: string;
@@ -54,11 +62,16 @@ export function SwatchPicker({
             title={swatch.label}
             disabled={disabled}
             onClick={() => onChange(swatch.value)}
-            style={{ backgroundColor: swatch.value }}
+            style={
+              swatch.value === TRANSPARENT
+                ? undefined
+                : { backgroundColor: swatch.value }
+            }
             className={cn(
-              "grid size-6 place-items-center rounded-lg border transition-transform outline-none",
+              "grid size-6 place-items-center overflow-hidden rounded-lg border transition-transform outline-none",
               "hover:scale-110 focus-visible:ring-3 focus-visible:ring-ring/40",
               "disabled:pointer-events-none disabled:opacity-50",
+              swatch.value === TRANSPARENT && "bg-checkerboard bg-card",
               isSelected
                 ? "border-primary ring-2 ring-primary/30"
                 : "border-border",
@@ -85,6 +98,10 @@ export function SwatchPicker({
  * adding a colour anywhere never leaves an invisible tick behind.
  */
 function contrastClass(colour: string): string {
+  // The checkerboard is drawn on the card, so the tick takes the card's own
+  // foreground and stays legible in either theme.
+  if (colour === TRANSPARENT) return "text-foreground";
+
   const hex = colour.replace("#", "");
   if (hex.length !== 6) return "text-white";
 

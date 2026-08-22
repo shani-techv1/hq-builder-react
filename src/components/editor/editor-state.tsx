@@ -147,7 +147,12 @@ export function EditorStateProvider({
   const library = useAssetLibrary();
 
   const [zoom, setZoom] = React.useState(DEFAULT_ZOOM);
-  const [showBackground, setShowBackground] = React.useState(true);
+  /*
+   * The sheet opens as the clear film it prints on, not as a white garment.
+   * A white sheet is a guess at where the transfer ends up, and it hides the
+   * one thing that is always true of the artwork — that it is cut out.
+   */
+  const [showBackground, setShowBackground] = React.useState(false);
   const [backgroundColor, setBackgroundColor] = React.useState(
     DEFAULT_SHEET_BACKGROUND,
   );

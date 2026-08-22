@@ -67,12 +67,15 @@ export const DEFAULT_SHEET_SIZE = "22x24";
 export const SHEET_FORMATS = ["PNG", "JPG", "SVG"];
 
 /**
- * Colours the sheet can be previewed against.
+ * What the sheet can be previewed against.
  *
  * Garment colours, not a palette: the sheet itself prints on transparent film,
  * so this is standing in for whatever the transfer ends up on. Judging white
  * artwork against a white sheet tells you nothing — and light type on a dark
  * shirt is exactly the case that needs checking before an order goes out.
+ *
+ * Transparency leads the list because it is the sheet as it really prints;
+ * everything after it is a garment being imagined under the transfer.
  *
  * The colour is a preview and never part of the design, so it is not exported,
  * not saved into a draft, and not on the undo stack.
@@ -82,7 +85,17 @@ export interface SheetBackground {
   label: string;
 }
 
+/**
+ * The sheet shown as the clear film it actually prints on.
+ *
+ * A CSS colour keyword rather than a sentinel, so anything that paints a
+ * swatch or a fill with it already does the right thing; the sheet draws the
+ * transparency checkerboard behind it.
+ */
+export const TRANSPARENT_BACKGROUND = "transparent";
+
 export const SHEET_BACKGROUNDS: SheetBackground[] = [
+  { value: TRANSPARENT_BACKGROUND, label: "Transparent" },
   { value: "#ffffff", label: "White" },
   { value: "#e7e5e4", label: "Heather grey" },
   { value: "#d6d3d1", label: "Ash" },
@@ -101,7 +114,13 @@ export const SHEET_BACKGROUNDS: SheetBackground[] = [
   { value: "#000000", label: "Black" },
 ];
 
-export const DEFAULT_SHEET_BACKGROUND = SHEET_BACKGROUNDS[0].value;
+/**
+ * The garment colour a preview falls back to.
+ *
+ * White rather than the first swatch, which is now transparency: this is the
+ * colour the sheet returns to when the preview is switched back on.
+ */
+export const DEFAULT_SHEET_BACKGROUND = "#ffffff";
 
 /**
  * Fixed production specs shown on the sheet's spec card. Constants rather than

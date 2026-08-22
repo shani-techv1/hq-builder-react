@@ -9,6 +9,7 @@ import type { WorkspaceSettings } from "@/components/editor/editor-state";
 import {
   MEASUREMENT_UNITS,
   SHEET_BACKGROUNDS,
+  TRANSPARENT_BACKGROUND,
   getSheetSizes,
   type MeasurementUnit,
 } from "@/lib/workspace";
@@ -67,14 +68,25 @@ export function CanvasInspector({ settings }: { settings: WorkspaceSettings }) {
         />
 
         {/* The sheet prints on clear film, so this is the garment, not the
-            design. Disabled rather than hidden while the preview is off —
-            hiding it would make the toggle look like it removed a feature. */}
-        <PropertyRow label="Colour" layout="stack" disabled={!settings.showBackground}>
+            design — and transparency is one of the choices rather than a mode
+            reached only by switching the row off. The last colour is kept
+            behind the transparent swatch, so going back to it is one click. */}
+        <PropertyRow label="Colour" layout="stack">
           <SwatchPicker
             swatches={SHEET_BACKGROUNDS}
-            value={settings.backgroundColor}
-            onChange={settings.setBackgroundColor}
-            disabled={!settings.showBackground}
+            value={
+              settings.showBackground
+                ? settings.backgroundColor
+                : TRANSPARENT_BACKGROUND
+            }
+            onChange={(value) => {
+              if (value === TRANSPARENT_BACKGROUND) {
+                settings.setShowBackground(false);
+                return;
+              }
+              settings.setBackgroundColor(value);
+              settings.setShowBackground(true);
+            }}
           />
         </PropertyRow>
       </InspectorSection>
