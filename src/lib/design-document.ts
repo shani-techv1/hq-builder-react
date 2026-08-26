@@ -383,7 +383,7 @@ export function deserializeDocument(value: unknown): RestoredDesign | null {
 const BASE64_CHUNK = 0x8000;
 
 /** Base64 data URL for a blob, so a design can travel as one text file. */
-async function toDataUrl(file: Blob): Promise<string> {
+export async function toDataUrl(file: Blob): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());
 
   let binary = "";

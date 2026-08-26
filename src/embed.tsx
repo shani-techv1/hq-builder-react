@@ -14,6 +14,7 @@ import {
   toSheetSizes,
   type SheetBootstrap,
 } from "@/lib/shopify";
+import { collectSheetPieces } from "@/lib/sheet-pieces";
 import { setSheetSizes } from "@/lib/workspace";
 
 /**
@@ -54,18 +55,28 @@ async function persist(bootstrap: SheetBootstrap, payload: DesignPayload) {
   const sheetSize = design.document.sheetSize;
   const variant = resolveVariant(bootstrap.sheetSizes, sheetSize);
 
+  /*
+   * The pieces ride with the layout rather than in `meta`, because they are
+   * part of what was designed and meta is a client-supplied label the order
+   * routes deliberately do not trust with anything that matters.
+   */
+  const pieces = await collectSheetPieces(design);
+
   const saved = await saveDesignRequest(bootstrap.endpoints.designs, {
     kind: "sheet",
     productId: bootstrap.product.id,
     variantId: variant?.variantId ?? null,
     // The whole document travels: a gang sheet is its layout, and the layout is
     // what has to be reproducible when the print file is generated.
-    layers: { objects: design.document.objects, sheetSize },
+    layers: { objects: design.document.objects, sheetSize, pieces },
     meta: {
       name: design.name,
       sheetSize,
       sheetLabel: variant?.label ?? sheetSize,
       objectCount: design.document.objects.length,
+      // Distinct artwork, which is what the pieces page lists — a sheet of
+      // forty is usually a handful of designs repeated.
+      pieceCount: pieces.length,
     },
     preview,
   });
