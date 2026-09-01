@@ -19,16 +19,22 @@ import {
   type SerializedAsset,
   type SerializedDesign,
 } from "@/lib/design-document";
+import { getAssetHostedUrl, setAssetHostedUrl } from "@/lib/image-cache";
+import { hostArtwork } from "@/lib/image-service";
 import { sheetInches } from "@/lib/workspace";
 
 /**
- * How many bytes of original artwork one save may carry.
+ * How many bytes of original artwork one save may carry *itself*.
  *
- * The save endpoint refuses a sheet body over 48MB, and the flattened preview
- * and the object list have to fit under that too. Base64 is roughly a third
- * larger than the bytes behind it, so this is the real ceiling on originals
- * rather than a round number: a sheet built from print-resolution PNGs reaches
- * it far sooner than the file count suggests.
+ * Only reached when the image host could not be used, which is the whole
+ * reason it is this small: the save endpoint refuses a sheet body over 48MB,
+ * and the flattened preview and the object list have to fit under that too.
+ * Base64 is roughly a third larger than the bytes behind it, so a sheet built
+ * from print-resolution PNGs would blow through a generous budget long before
+ * the file count suggested it.
+ *
+ * A hosted piece costs an order a few hundred bytes and has no such ceiling,
+ * so this is a floor under the worst case rather than the normal path.
  */
 const MAX_PIECE_PAYLOAD_BYTES = 32 * 1024 * 1024;
 
@@ -48,15 +54,24 @@ export interface SheetPiece {
   /** Printed size in inches, as placed. */
   widthIn: number;
   heightIn: number;
-  /** MIME type of {@link file}, when there is one. */
+  /** MIME type of the artwork, when there is a file behind the piece. */
   mimeType: string | null;
   /**
-   * The original upload, as a data URL.
+   * Where the image host serves the original upload.
    *
-   * Null for a piece with no file behind it — text and vector are drawn by the
-   * editor, not uploaded — and for one this save had no room left to carry.
-   * Either way the piece is still listed: a printer knowing a piece exists and
-   * having to ask for the file beats not knowing it is on the sheet.
+   * The normal way a piece's artwork reaches an order: full resolution, byte
+   * for byte, and fetchable by whoever prints it without going through the
+   * shop. Null for text and vector, which were drawn rather than uploaded, and
+   * on the rare save that could not reach the host.
+   */
+  src: string | null;
+  /**
+   * The original upload inlined as a data URL — the fallback for {@link src}.
+   *
+   * Only filled in when hosting failed, and only while the budget lasts. A
+   * piece can therefore have neither, and is still listed: a printer knowing a
+   * piece exists and having to ask for the file beats not knowing it is on the
+   * sheet at all.
    */
   file: string | null;
 }
@@ -139,11 +154,16 @@ const round = (value: number): number => Math.round(value * 100) / 100;
 /**
  * Build the piece list for a saved design.
  *
- * Attaching the originals is best-effort by design. A piece whose file will not
- * fit is skipped and the next one is still tried, so a single enormous upload
- * costs its own file rather than every file after it — and the save itself is
- * never failed over one, because a sheet that cannot be ordered is worse than
- * an order missing a reference image.
+ * Artwork travels as a link wherever it can. Most pieces were filed on the
+ * image host the moment they were uploaded, so this usually only reads back a
+ * URL; anything still missing is filed now, which covers a restored draft and
+ * an upload that was still in flight when the order was placed.
+ *
+ * Inlining the bytes is the last resort, and bounded. A piece that will not fit
+ * is skipped and the next one is still tried, so a single enormous upload costs
+ * its own file rather than every file after it — and the save itself is never
+ * failed over one, because a sheet that cannot be ordered is worse than an
+ * order missing a reference image.
  */
 export async function collectSheetPieces(
   design: SerializedDesign,
@@ -167,10 +187,13 @@ export async function collectSheetPieces(
       widthIn: group.widthIn,
       heightIn: group.heightIn,
       mimeType: asset?.mimeType ?? null,
+      src: asset ? await hostedUrlFor(asset) : null,
       file: null,
     };
 
-    if (asset) {
+    // Only when the host is out of reach. Carrying the bytes as well as the
+    // link would double what the order costs to save for no one's benefit.
+    if (asset && !piece.src) {
       const file = await readFile(asset);
       // A data URL is ASCII, so its length is its weight on the wire.
       if (file && file.length <= remaining) {
@@ -183,6 +206,25 @@ export async function collectSheetPieces(
   }
 
   return pieces;
+}
+
+/**
+ * The asset's hosted URL, filing it now if the background upload never landed.
+ *
+ * The result is written back to the cache, so a second save of the same design
+ * — a shopper who returns to the cart and adds another — reuses the upload
+ * rather than putting the same bytes on the host again.
+ */
+async function hostedUrlFor(asset: SerializedAsset): Promise<string | null> {
+  const known = getAssetHostedUrl(asset.id);
+  if (known) return known;
+
+  const blob = asset.file instanceof Blob ? asset.file : null;
+  if (!blob) return null;
+
+  const url = await hostArtwork(blob, asset.name);
+  if (url) setAssetHostedUrl(asset.id, url);
+  return url;
 }
 
 /**

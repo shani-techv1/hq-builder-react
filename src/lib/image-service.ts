@@ -59,6 +59,65 @@ const FIRST_PASS = "1";
 const serviceUrl = (path: string): string =>
   `${IMAGE_API_URL}/${path.replace(/^\/+/, "")}`;
 
+/**
+ * Longer than the cut-out's own timeout allows for, because this sends print
+ * artwork rather than a thumbnail: a 40MB PNG off a phone takes a while to
+ * leave the building, and giving up on it means the order loses the file.
+ */
+const UPLOAD_TIMEOUT_MS = 180_000;
+
+/**
+ * File the artwork on the image host, and get back a URL that serves it.
+ *
+ * The same host the cut-out already files its results on, through its plain
+ * upload endpoint: the bytes are stored as they arrive — no re-encode, no
+ * resize — and come back byte for byte. That is the whole point of using it.
+ * Whoever prints a gang sheet needs the artwork at the resolution it was
+ * uploaded at, and a URL costs an order a few hundred bytes where the file
+ * itself costs megabytes.
+ *
+ * Uploads are filed under a name the host's static guard recognises, which is
+ * what lets a fulfilment backend fetch one without being on an allowlist.
+ *
+ * Returns `null` rather than throwing. Hosting is an optimisation on the way
+ * to an order, and a design that cannot be saved is worse than one whose
+ * artwork travels the slow way — see `collectSheetPieces`, which falls back to
+ * carrying the bytes.
+ */
+export async function hostArtwork(
+  source: Blob,
+  fileName: string,
+): Promise<string | null> {
+  const form = new FormData();
+  form.append("image", source, fileName);
+
+  try {
+    const response = await fetch(`${IMAGE_API_URL}/api/images/upload`, {
+      method: "POST",
+      body: form,
+      mode: "cors",
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+      cache: "no-store",
+      signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+
+    const payload: unknown = await response.json();
+    const url =
+      typeof payload === "object" && payload !== null
+        ? (payload as { url?: unknown }).url
+        : undefined;
+
+    // Absolute already — the endpoint returns a complete URL rather than the
+    // path the cut-out's headers carry.
+    return typeof url === "string" && /^https?:\/\//i.test(url) ? url : null;
+  } catch {
+    // Offline, blocked, or slower than the timeout allows.
+    return null;
+  }
+}
+
 export interface RemovedBackground {
   /** The cut-out artwork. */
   blob: Blob;

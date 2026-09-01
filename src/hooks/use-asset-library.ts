@@ -11,10 +11,35 @@ import { queryAssets, type Asset } from "@/lib/assets";
 import {
   createOwnedObjectUrl,
   getAssetFile,
+  getAssetHostedUrl,
   loadImage,
   registerAssetSource,
+  setAssetHostedUrl,
 } from "@/lib/image-cache";
 import type { RestoredAsset } from "@/lib/design-document";
+import { hostArtwork } from "@/lib/image-service";
+
+/**
+ * File an asset's bytes on the image host, in the background.
+ *
+ * Started the moment artwork enters the library rather than when the sheet is
+ * ordered, because by then the shopper is waiting on a button: a design session
+ * is minutes long and an upload is seconds, so doing it here means the URL is
+ * already there at checkout instead of megabytes going up at the worst possible
+ * moment.
+ *
+ * Deliberately unawaited and silent. Nothing on the sheet needs the URL to
+ * render — the canvas draws from the local file — and a host that is down must
+ * not stop someone designing. `collectSheetPieces` uploads what is still
+ * missing when the order is placed, and carries the bytes itself if that fails
+ * too.
+ */
+function fileOnHost(asset: Asset, file: Blob): void {
+  if (getAssetHostedUrl(asset.id)) return;
+  void hostArtwork(file, asset.name).then((url) => {
+    if (url) setAssetHostedUrl(asset.id, url);
+  });
+}
 
 /** `logo.png` → `logo copy.png`, so the extension stays where it belongs. */
 function copyName(name: string): string {
@@ -147,6 +172,7 @@ export function useAssetLibrary(): AssetLibrary {
               width: asset.width,
               height: asset.height,
             });
+            fileOnHost(asset, blob);
             return asset;
           } catch (error) {
             setRejections((current) => [
@@ -219,6 +245,11 @@ export function useAssetLibrary(): AssetLibrary {
           width: copy.width,
           height: copy.height,
         });
+        // Same bytes, so the same hosted copy — uploading them a second time
+        // would put an identical file on the host under a new name.
+        const hosted = getAssetHostedUrl(source.id);
+        if (hosted) setAssetHostedUrl(copy.id, hosted);
+        else fileOnHost(copy, file);
       }
       // Next to its source rather than at the top — the copy is easier to find
       // where the eye already is.
@@ -255,6 +286,9 @@ export function useAssetLibrary(): AssetLibrary {
         width: asset.width,
         height: asset.height,
       });
+      // A draft can be days old and was never ordered, so its artwork has
+      // almost certainly never been filed. Start now, on the same terms.
+      fileOnHost({ ...asset, source } as Asset, file);
       // Nothing else will ask for these. An upload decodes on its way through
       // the pipeline, but a restored asset arrives already described — without
       // this the canvas would draw placeholders and never replace them.

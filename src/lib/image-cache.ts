@@ -42,6 +42,15 @@ interface AssetSource extends Omit<DecodedArtwork, "element"> {
    * trip for something already in memory.
    */
   file: Blob;
+  /**
+   * Where the image host filed these bytes, once it has.
+   *
+   * Filled in after the fact, because the upload runs in the background while
+   * the artwork is already usable on the sheet. Absent until it lands, and
+   * absent for good if the host could not be reached — so every reader treats
+   * it as a shortcut it may not get, never as the location of the artwork.
+   */
+  hostedUrl?: string;
 }
 
 /**
@@ -125,6 +134,22 @@ export function registerAssetSource(
 /** The bytes behind an asset, for saving a draft or exporting a design. */
 export function getAssetFile(assetId: string): Blob | undefined {
   return sources.get(assetId)?.file;
+}
+
+/**
+ * Record where the image host filed an asset's bytes.
+ *
+ * Silently ignored for an asset the cache has never seen, which is what
+ * happens when a background upload outlives the design it belonged to.
+ */
+export function setAssetHostedUrl(assetId: string, url: string): void {
+  const source = sources.get(assetId);
+  if (source) source.hostedUrl = url;
+}
+
+/** The hosted copy of an asset's artwork, if the upload has landed. */
+export function getAssetHostedUrl(assetId: string): string | undefined {
+  return sources.get(assetId)?.hostedUrl;
 }
 
 /**
