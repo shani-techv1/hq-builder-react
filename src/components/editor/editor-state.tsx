@@ -187,8 +187,8 @@ export function EditorStateProvider({
       base.duplicateSelection();
       notify?.();
     },
-    autofillSelection: (count: number, step: { x: number; y: number }) => {
-      base.autofillSelection(count, step);
+    autofillSelection: (offsets: Array<{ x: number; y: number }>) => {
+      base.autofillSelection(offsets);
       notify?.();
     },
     deleteSelection: () => {

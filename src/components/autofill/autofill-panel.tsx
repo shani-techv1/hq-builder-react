@@ -74,12 +74,26 @@ export function AutofillPanel() {
     AUTOFILL_DEFAULTS.keepInSafeZone,
   );
 
-  const plan = planAutofill(selectedObjects, canvas.sheetSize, {
-    count: requestedCount,
-    direction,
-    gapInches,
-    keepInSafeZone,
-  });
+  /* Memoised because a free-space fill walks a grid over every object on the
+     sheet, and this runs on each render of a panel with four live controls. */
+  const plan = React.useMemo(
+    () =>
+      planAutofill(
+        selectedObjects,
+        canvas.sheetSize,
+        { count: requestedCount, direction, gapInches, keepInSafeZone },
+        canvas.objects,
+      ),
+    [
+      selectedObjects,
+      canvas.sheetSize,
+      canvas.objects,
+      requestedCount,
+      direction,
+      gapInches,
+      keepInSafeZone,
+    ],
+  );
 
   if (!plan) {
     return (
@@ -87,7 +101,7 @@ export function AutofillPanel() {
         <EmptyState
           icon={Grip}
           title="Nothing selected"
-          description="Select artwork on the sheet, and Autofill will repeat it across the rest of the row."
+          description="Select artwork on the sheet, and Autofill will repeat it into the space that is left."
         />
       </PanelBody>
     );
@@ -106,19 +120,36 @@ export function AutofillPanel() {
   const boundary = keepInSafeZone
     ? `the ${safeMarginLabel(unit)} safe zone`
     : "the sheet";
+  /* A vertical fill wraps sideways and a horizontal one downwards, so the
+     lines a run covers are columns in one case and rows in the other. */
+  const lineNoun =
+    direction === "down" || direction === "up" ? "columns" : "rows";
+  /* Packing and marching fail for different reasons and are fixed by
+     different things, so they do not share their wording. */
+  const packing = direction === "free";
 
   const handleDuplicate = () => {
     if (plan.fits === 0) return;
-    canvas.autofillSelection(plan.fits, plan.step);
+    canvas.autofillSelection(plan.offsets);
   };
 
   return (
     <TooltipProvider delay={300}>
       <PanelBody className="space-y-4">
         <p className="text-[11.5px] leading-relaxed text-muted-foreground">
-          Repeating{" "}
-          <span className="font-semibold text-foreground">{subject}</span>{" "}
-          {directionLabel.toLowerCase()} across the sheet.
+          {packing ? (
+            <>
+              Filling the free space on the sheet with{" "}
+              <span className="font-semibold text-foreground">{subject}</span>,
+              around the artwork already placed.
+            </>
+          ) : (
+            <>
+              Repeating{" "}
+              <span className="font-semibold text-foreground">{subject}</span>{" "}
+              {directionLabel.toLowerCase()} across the sheet.
+            </>
+          )}
         </p>
 
         <div className="space-y-3 rounded-card border border-border bg-card p-3">
@@ -171,10 +202,17 @@ export function AutofillPanel() {
             detail={`Type how many copies to add, up to ${MAX_AUTOFILL_COPIES}.`}
           />
         ) : plan.fits === 0 ? (
+          /* A line fill wraps onto the next line before it gives up and a
+             packing fill has looked everywhere, so either way this is the
+             sheet being full rather than one direction being blocked. */
           <ValidationBadge
             tone="warning"
-            label={`No room ${directionLabel.toLowerCase()}`}
-            detail={`The next copy would fall outside ${boundary}. Move the artwork, close the gap, or fill the other way.`}
+            label={packing ? "No free space left" : "No room on the sheet"}
+            detail={
+              packing
+                ? `Every spot this size inside ${boundary} is taken. Close the gap, make the artwork smaller, or clear some room.`
+                : `There is no space left inside ${boundary} for another copy this size. Close the gap, make the artwork smaller, or clear some room.`
+            }
           />
         ) : plan.fits < requested ? (
           /* A warning rather than a note: the button is about to do something
@@ -183,15 +221,29 @@ export function AutofillPanel() {
           <ValidationBadge
             tone="warning"
             label={`Only ${plan.fits} of ${requested} will fit`}
-            detail={`The rest would fall outside ${boundary}. Duplicate places ${
+            detail={`${
+              packing
+                ? `The sheet has ${plan.fits === 1 ? "one free spot" : `${plan.fits} free spots`} this size left`
+                : `The rest would fall outside ${boundary}`
+            }. Duplicate places ${
               plan.fits === 1 ? "the one that fits" : `the ${plan.fits} that fit`
-            } — close the gap or fill the other way for more.`}
+            } — close the gap or make the artwork smaller for more.`}
           />
         ) : (
           <ValidationBadge
             tone="ok"
             label={`${requested} ${requested === 1 ? "copy fits" : "copies fit"}`}
-            detail={`Placed ${directionLabel.toLowerCase()}, inside ${boundary}.`}
+            /* "Stopping at" rather than "inside": a copy sits where the
+               artwork it came from sits, so a selection already over the trim
+               line makes copies that are over it too. Checks flags those; the
+               fill should not claim they are safe. */
+            detail={
+              packing
+                ? `Dropped into the free space on the sheet, clear of the artwork already placed and of ${boundary}.`
+                : plan.lines > 1
+                  ? `Placed ${directionLabel.toLowerCase()} across ${plan.lines} ${lineNoun}, stopping at ${boundary}.`
+                  : `Placed ${directionLabel.toLowerCase()}, stopping at ${boundary}.`
+            }
           />
         )}
 

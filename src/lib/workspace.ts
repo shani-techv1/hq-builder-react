@@ -136,13 +136,70 @@ export const SHEET_SPEC = {
 const FALLBACK_SHEET = { width: 22, height: 36 };
 
 /**
+ * A sheet id's dimensions: `"22x36"`, and `"22.5x12"` for a sheet that is not
+ * a whole number of inches wide.
+ *
+ * Half inches are real sizes, not typos — a 22.5″ roll is 22.5″, and treating
+ * it as 23″ prints every piece on it about 2% out.
+ */
+const SHEET_DIMENSIONS = /^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)$/;
+
+/**
  * Sheet dimensions in inches, parsed from the preset id (`"22x36"`). Drives
  * the proportions of the sheet on the canvas and the extent of the rulers.
  */
 export function sheetInches(id: string): { width: number; height: number } {
-  const match = /^(\d+)x(\d+)$/.exec(id);
+  const match = SHEET_DIMENSIONS.exec(id);
   if (!match) return FALLBACK_SHEET;
   return { width: Number(match[1]), height: Number(match[2]) };
+}
+
+/**
+ * Whether a size on offer is the one a stored id was written from.
+ *
+ * Exactly, or through the rounding that sheet ids used to be built with: a
+ * 22.5″ sheet was once recorded as `"23x12"`, so a design saved then names a
+ * size no list offers any more. Only a fractional candidate can be a rounding
+ * of a stored id, which keeps a size that was always whole from being read as
+ * a rounding of a neighbour half an inch away.
+ */
+const matchesStored = (candidate: number, stored: number) =>
+  candidate === stored ||
+  (!Number.isInteger(candidate) && Math.round(candidate) === stored);
+
+/**
+ * The size a stored sheet id refers to, as the current list names it.
+ *
+ * Designs outlive the ids they were saved under. A sheet id is the join
+ * between a saved design and the variant that sells it, so an id the list no
+ * longer contains costs the shopper their size and their reorder — and the
+ * ids changed when sheets stopped being rounded to whole inches.
+ *
+ * An id that still exists is returned untouched, which is every id in a list
+ * that never had a fractional size in it. An id matching nothing is also
+ * returned untouched: the sheet then draws at the dimensions it was designed
+ * against, which is what a reprint of it should be.
+ */
+export function resolveSheetSize(id: string): string {
+  const sizes = getSheetSizes();
+  if (sizes.some((size) => size.id === id)) return id;
+
+  const stored = SHEET_DIMENSIONS.exec(id);
+  if (!stored) return id;
+
+  const width = Number(stored[1]);
+  const height = Number(stored[2]);
+
+  const rounded = sizes.find((size) => {
+    const candidate = SHEET_DIMENSIONS.exec(size.id);
+    return (
+      candidate !== null &&
+      matchesStored(Number(candidate[1]), width) &&
+      matchesStored(Number(candidate[2]), height)
+    );
+  });
+
+  return rounded?.id ?? id;
 }
 
 /**
