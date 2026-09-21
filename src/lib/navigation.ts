@@ -54,6 +54,9 @@ export interface NavItem {
    * reached from the artwork they act on, and a rail button for them would be
    * dead most of the time. They are still panels in every other respect, so
    * they keep an entry here for their heading and their description.
+   *
+   * It also withholds a panel that isn't ready to offer yet, without taking it
+   * out of the editor: removing the flag is all it takes to bring it back.
    */
   hidden?: boolean;
   /** Panel heading — longer than the rail label where that reads better. */
@@ -74,6 +77,9 @@ export const NAV_ITEMS: NavItem[] = [
     id: "canva",
     label: "Canva",
     icon: { kind: "logo", src: CANVA_LOGO_SRC },
+    // Withheld for now. The rail was its only way in, so the whole Canva
+    // import is out of sight until this goes.
+    hidden: true,
     title: "Canva",
     description: "Bring a design you already made onto the sheet.",
   },
