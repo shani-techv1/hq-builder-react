@@ -27,6 +27,9 @@ export interface ToolbarActionProps
    * For the actions a person has to recognise rather than recall: "Remove
    * background" is not a glyph anyone would guess at, and a toolbar of eight
    * unlabelled icons is a memory test.
+   *
+   * Not on a phone, though. Labelled, the bar is wider than the screen, and a
+   * bar hanging off the edge hides more than a label explains.
    */
   showLabel?: boolean;
   active?: boolean;
@@ -111,7 +114,9 @@ export function ToolbarAction({
         strokeWidth={2}
         aria-hidden
       />
-      {showLabel ? <span className="whitespace-nowrap">{label}</span> : null}
+      {showLabel ? (
+        <span className="hidden whitespace-nowrap md:inline">{label}</span>
+      ) : null}
     </motion.button>
   );
 

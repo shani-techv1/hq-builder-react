@@ -8,12 +8,18 @@ import { Ruler, RulerCorner } from "@/components/canvas/rulers";
 import { EditorToolbar } from "@/components/toolbar/editor-toolbar";
 import { useEditorState } from "@/components/editor/editor-state";
 import { useCanvasShortcuts } from "@/hooks/use-canvas-shortcuts";
+import { useCompactLayout } from "@/hooks/use-compact-layout";
 import { useElementSize } from "@/hooks/use-element-size";
 import { useFilePicker } from "@/hooks/use-file-picker";
 import { useSpacePan } from "@/hooks/use-space-pan";
 import type { PlacementPoint } from "@/lib/canvas-objects";
 import type { PanelId } from "@/lib/navigation";
-import { PX_PER_INCH, sheetInches, sheetSizeLabel } from "@/lib/workspace";
+import {
+  PX_PER_INCH,
+  fitZoom,
+  sheetInches,
+  sheetSizeLabel,
+} from "@/lib/workspace";
 import { cn } from "@/lib/utils";
 
 /**
@@ -23,10 +29,14 @@ import { cn } from "@/lib/utils";
  * gutters: they take over once the sheet outgrows the pane and the view starts
  * to scroll. The top one is deeper than the sides because the spec card floats
  * in it, and because the sheet wants clear air under the toolbar.
+ *
+ * A phone gets far less. 56px either side of a 390px screen would spend more
+ * than a quarter of it on air, and the sheet is fitted to whatever is left.
  */
-const MIN_GUTTER_X = 56;
-const MIN_GUTTER_TOP = 92;
-const MIN_GUTTER_BOTTOM = 72;
+const GUTTERS = {
+  regular: { x: 56, top: 92, bottom: 72 },
+  compact: { x: 16, top: 72, bottom: 24 },
+};
 
 /**
  * How far apart, in sheet percentages, consecutive files from one drop land.
@@ -74,6 +84,9 @@ export function Workspace({ onOpenPanel, onOpenPanelAt, className }: WorkspacePr
   const pane = React.useRef<HTMLDivElement>(null);
   const paneSize = useElementSize(pane);
 
+  const compact = useCompactLayout();
+  const gutter = compact ? GUTTERS.compact : GUTTERS.regular;
+
   const { isPanning, handlers: panHandlers } = useSpacePan(pane);
 
   useCanvasShortcuts({
@@ -118,13 +131,40 @@ export function Workspace({ onOpenPanel, onOpenPanelAt, className }: WorkspacePr
    * lands on the sheet's top-left corner however the sheet is placed.
    */
   const originX = Math.max(
-    MIN_GUTTER_X,
+    gutter.x,
     (paneSize.width - (baseWidth * zoom) / 100) / 2,
   );
   const originY = Math.max(
-    MIN_GUTTER_TOP,
+    gutter.top,
     (paneSize.height - (baseHeight * zoom) / 100) / 2,
   );
+
+  /**
+   * The zoom at which the sheet spans the pane, gutters aside. `null` until the
+   * pane has been measured, since a fit against nothing is no fit at all.
+   *
+   * Width only. Height changes every time a phone's menu opens or closes, and a
+   * sheet that rescaled with it would jump under the user's finger each time.
+   */
+  const fittedZoom =
+    paneSize.width > 0
+      ? fitZoom(paneSize.width - 2 * gutter.x, baseWidth)
+      : null;
+
+  /**
+   * A phone opens on the whole width of the sheet, and returns to it when that
+   * width changes — the phone is turned, or the sheet is resized — rather than
+   * at 100%, where a standard 22″ sheet is half again wider than the screen.
+   *
+   * Any zoom the user chooses holds until then. A layout effect, so the fit
+   * lands before the browser paints the render that measured the pane — the
+   * storefront's first frame is already fitted. The standalone app's server
+   * render cannot know the screen, and settles on the fit once it hydrates.
+   */
+  React.useLayoutEffect(() => {
+    if (!compact || fittedZoom === null) return;
+    setZoom(fittedZoom);
+  }, [compact, fittedZoom, setZoom]);
 
   /**
    * Files dropped on the sheet are uploaded and then placed where they landed.
@@ -187,6 +227,9 @@ export function Workspace({ onOpenPanel, onOpenPanelAt, className }: WorkspacePr
         onSheetSizeChange={setSheetSize}
         zoom={zoom}
         onZoomChange={setZoom}
+        onZoomToFit={() => {
+          if (fittedZoom !== null) setZoom(fittedZoom);
+        }}
       />
 
       <div className="flex min-h-0 flex-1 flex-col border-t border-border">
@@ -248,7 +291,7 @@ export function Workspace({ onOpenPanel, onOpenPanelAt, className }: WorkspacePr
               style={{
                 // Leading edges carry the centring offset; trailing ones stay
                 // at the floor, since they only ever show once it scrolls.
-                padding: `${originY}px ${MIN_GUTTER_X}px ${MIN_GUTTER_BOTTOM}px ${originX}px`,
+                padding: `${originY}px ${gutter.x}px ${gutter.bottom}px ${originX}px`,
                 width: "max-content",
               }}
             >

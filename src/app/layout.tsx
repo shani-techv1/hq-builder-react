@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import {
   Anton,
   Geist,
@@ -116,6 +116,15 @@ const ARTWORK_FONT_VARIABLES = {
 export const metadata: Metadata = {
   title: "Design Builder",
   description: "Design, arrange and order custom prints.",
+};
+
+/**
+ * Drawn edge to edge, as the storefront page already is, so the safe-area
+ * insets the editor pads by are real numbers — without `cover`, iOS reports
+ * them as zero and the phone's tab bar sits under the home indicator.
+ */
+export const viewport: Viewport = {
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

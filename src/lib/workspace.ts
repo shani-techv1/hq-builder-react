@@ -264,6 +264,21 @@ export function zoomOut(current: number): number {
   return lower.length > 0 ? lower[lower.length - 1] : MIN_ZOOM;
 }
 
+/**
+ * The zoom at which something `contentPx` wide at 100% fills `availablePx`.
+ *
+ * Off the ladder on purpose: a sheet that fits a phone exactly is worth more
+ * than one that stops at the nearest round number and leaves a gap, or runs a
+ * few pixels off the edge. The buttons still walk the ladder from wherever this
+ * lands. Rounded down, so it never overshoots by a fraction of a pixel, and
+ * kept within the range the buttons can reach.
+ */
+export function fitZoom(availablePx: number, contentPx: number): number {
+  if (availablePx <= 0 || contentPx <= 0) return DEFAULT_ZOOM;
+  const fitted = Math.floor((availablePx / contentPx) * 100);
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, fitted));
+}
+
 /** Where a design stands relative to the last save. */
 export type SaveState = "saved" | "saving" | "unsaved";
 

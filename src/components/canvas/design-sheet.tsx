@@ -17,8 +17,13 @@ import { cn } from "@/lib/utils";
  * Below this the sheet is smaller than the empty state, so the invitation is
  * dropped rather than clipped — at that zoom the sheet is a thumbnail and an
  * empty one already reads as empty.
+ *
+ * The invitation stands about 285px tall at any width down to 260px, where its
+ * copy first wraps again. The width floor sits just above that, low enough that
+ * a sheet fitted to a phone — around 300px across — still gets the invitation.
+ * On a phone that is the one button between an empty sheet and a first upload.
  */
-const MIN_EMPTY_STATE_WIDTH = 380;
+const MIN_EMPTY_STATE_WIDTH = 280;
 const MIN_EMPTY_STATE_HEIGHT = 300;
 
 

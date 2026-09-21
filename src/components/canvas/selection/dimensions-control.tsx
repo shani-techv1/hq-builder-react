@@ -74,7 +74,8 @@ export function DimensionsControl({ object }: DimensionsControlProps) {
         aria-label="Dimensions"
       >
         <Ruler className="size-[17px] shrink-0" strokeWidth={2} aria-hidden />
-        <span className="whitespace-nowrap">Dimensions</span>
+        {/* Icon-only on a phone, as the toolbar's other labels are. */}
+        <span className="hidden whitespace-nowrap md:inline">Dimensions</span>
         <ChevronDown className="size-3.5 shrink-0 opacity-70" strokeWidth={2.4} aria-hidden />
       </PopoverTrigger>
 

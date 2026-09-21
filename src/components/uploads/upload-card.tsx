@@ -100,10 +100,13 @@ export function UploadCard({
         className,
       )}
     >
+      {/* The drop-zone invitation is left to screens with room for it. On a
+          phone the panel is a short sheet, and this pushed its one real
+          action, the upload button, below the fold. */}
       <motion.div
         animate={isDragging ? { scale: 1.04 } : { scale: 1 }}
         transition={{ type: "spring", stiffness: 380, damping: 24 }}
-        className="flex flex-col items-center gap-1"
+        className="hidden flex-col items-center gap-1 md:flex"
       >
         <span
           className={cn(
@@ -129,7 +132,7 @@ export function UploadCard({
       <PrimaryButton
         icon={CloudUpload}
         onClick={picker.open}
-        className="mt-4"
+        className="md:mt-4"
         size="md"
       >
         Upload files

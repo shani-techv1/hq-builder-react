@@ -3,6 +3,10 @@
 import * as React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
+import {
+  PANEL_TRANSITION,
+  PanelCrossfade,
+} from "@/components/panels/panel-motion";
 import { cn } from "@/lib/utils";
 
 export interface SlidingPanelProps {
@@ -19,16 +23,9 @@ export interface SlidingPanelProps {
 /** Open width. The inner column is pinned to this so nothing reflows. */
 const PANEL_WIDTH = 420;
 
-/** Widen, not slide: the workspace makes room rather than being covered. */
-const PANEL_TRANSITION = {
-  type: "spring" as const,
-  stiffness: 420,
-  damping: 42,
-  mass: 0.9,
-};
-
 /**
- * The 420px drawer that every menu renders into.
+ * The 420px drawer that every menu renders into on a desktop-sized screen —
+ * see `BottomSheet` for the one a phone gets.
  *
  * A column in the editor's layout rather than a sheet floating over it — the
  * workspace narrows to make room and the sheet stays visible, so artwork can
@@ -68,18 +65,7 @@ export function SlidingPanel({
             style={{ width: PANEL_WIDTH }}
             className="flex h-full max-w-full flex-col"
           >
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={contentKey}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.16, ease: "easeOut" }}
-                className="flex min-h-0 flex-1 flex-col"
-              >
-                {children}
-              </motion.div>
-            </AnimatePresence>
+            <PanelCrossfade contentKey={contentKey}>{children}</PanelCrossfade>
           </div>
         </motion.aside>
       ) : null}

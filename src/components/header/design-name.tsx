@@ -86,7 +86,10 @@ export function DesignName({ value, onChange, className }: DesignNameProps) {
       onClick={startEditing}
       title="Rename design"
       className={cn(
-        "group flex h-8 max-w-[min(42vw,20rem)] items-center gap-1.5 rounded-lg px-2 text-left",
+        // `min-w-0` lets the name give up its width and truncate when the
+        // header runs short, as the storefront's does on a phone; without it
+        // the text keeps its full width and draws over the buttons beside it.
+        "group flex h-8 min-w-0 max-w-[min(42vw,20rem)] items-center gap-1.5 rounded-lg px-2 text-left",
         "transition-colors hover:bg-muted",
         "focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40",
         className,

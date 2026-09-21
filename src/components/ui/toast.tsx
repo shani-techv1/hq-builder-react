@@ -56,6 +56,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             // Above the account dialog, which is what most of these report on.
             "fixed bottom-4 right-4 z-[60] flex flex-col gap-2 outline-none",
             "w-[min(22rem,calc(100vw-2rem))]",
+            // On a phone, clear of the tab bar along the bottom edge.
+            "max-md:bottom-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom)+0.75rem)]",
           )}
         >
           <ToastList />

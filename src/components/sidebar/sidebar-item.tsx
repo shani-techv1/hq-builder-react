@@ -22,10 +22,13 @@ export interface SidebarItemProps {
    */
   badge?: number;
   onClick: () => void;
+  /** Sizing overrides — how the bottom tab bar shares its width out. */
+  className?: string;
 }
 
 /**
- * One icon + label entry in the 80px rail.
+ * One icon + label entry in the 80px rail, or in the tab bar that replaces it
+ * on a phone.
  *
  * Active is the strong blue pill. `isRemembered` is the quieter state a menu
  * keeps after its panel is dismissed, so the rail still shows where the user
@@ -38,6 +41,7 @@ export function SidebarItem({
   isRemembered = false,
   badge = 0,
   onClick,
+  className,
 }: SidebarItemProps) {
   const warnings = badge > 0 ? `${badge} warning${badge === 1 ? "" : "s"}` : null;
 
@@ -56,6 +60,7 @@ export function SidebarItem({
           : isRemembered
             ? "text-primary hover:bg-primary-soft"
             : "text-muted-foreground hover:bg-primary-soft hover:text-primary",
+        className,
       )}
     >
       {isActive ? (

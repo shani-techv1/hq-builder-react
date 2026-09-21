@@ -40,8 +40,10 @@ export function SheetSizeSelect({
           className,
         )}
       >
+        {/* Dropped on a phone for the room: the dimensions say what this is
+            on their own. */}
         <Ruler
-          className="size-[17px] shrink-0 text-muted-foreground"
+          className="hidden size-[17px] shrink-0 text-muted-foreground md:block"
           strokeWidth={2}
           aria-hidden
         />

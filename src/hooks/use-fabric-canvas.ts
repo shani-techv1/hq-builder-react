@@ -174,6 +174,15 @@ export function useFabricCanvas({
       selectionColor: "rgba(30,136,255,0.08)",
       selectionBorderColor: "#1e88ff",
       selectionLineWidth: 1,
+      /*
+       * On a touchscreen, a drag that starts on the selected object moves it
+       * and a drag anywhere else scrolls the workspace. Without this the sheet
+       * swallows every touch, and on a phone — where the sheet is most of what
+       * is on screen — a long sheet could only be scrolled by its edges.
+       * Touching an unselected object still selects it, so moving one is tap,
+       * then drag. Mouse input is not affected.
+       */
+      allowTouchScrolling: true,
     });
     canvasRef.current = canvas;
 

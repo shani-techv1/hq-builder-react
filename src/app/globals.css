@@ -46,6 +46,8 @@
   --shadow-soft: 0 1px 2px 0 rgb(16 24 40 / 0.04), 0 1px 3px 0 rgb(16 24 40 / 0.06);
   --shadow-card: 0 2px 4px -2px rgb(16 24 40 / 0.04), 0 8px 20px -6px rgb(16 24 40 / 0.08);
   --shadow-panel: 0 0 0 1px rgb(16 24 40 / 0.03), 12px 0 40px -12px rgb(16 24 40 / 0.14);
+  /* The same lift for the phone's panel, cast up over the canvas it rises from. */
+  --shadow-panel-up: 0 0 0 1px rgb(16 24 40 / 0.03), 0 -12px 40px -12px rgb(16 24 40 / 0.14);
   --shadow-primary: 0 1px 2px 0 rgb(30 136 255 / 0.24), 0 8px 16px -6px rgb(30 136 255 / 0.36);
   /* The print sheet — lifted clearly off the workspace without a hard edge. */
   --shadow-sheet: 0 1px 2px 0 rgb(16 24 40 / 0.04), 0 4px 10px -4px rgb(16 24 40 / 0.06),
@@ -54,6 +56,10 @@
 
 :root {
   --radius: 12px;
+
+  /* The phone's tab bar, less the safe-area inset under it. Shared with what
+     has to clear the bar, like toasts. */
+  --bottom-nav-height: 3.75rem;
 
   /*
    * The interface typeface.
@@ -141,6 +147,30 @@
     scrollbar-width: thin;
     scrollbar-color: color-mix(in oklch, var(--foreground) 18%, transparent)
       transparent;
+  }
+}
+
+/*
+ * iOS zooms the whole page into any text field set smaller than 16px, and
+ * leaves it zoomed after the field is done with — the editor then sits
+ * magnified and half off screen until pinched back. Touchscreens get 16px
+ * fields throughout.
+ *
+ * Outside any layer on purpose: an unlayered rule outranks every Tailwind
+ * utility, so no field's own text size can reintroduce the zoom.
+ */
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  /* The invisible field Fabric types canvas text into. Its 1px size is set
+     inline, which only `!important` outranks — and at 1px square and fully
+     transparent, the larger size changes nothing anyone can see. */
+  textarea[data-fabric="textarea"] {
+    font-size: 16px !important;
   }
 }
 

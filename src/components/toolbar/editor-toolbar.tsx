@@ -5,6 +5,7 @@ import { Grid2x2, Image, Magnet, Redo2, Type, Undo2 } from "lucide-react";
 import { SheetSizeSelect } from "@/components/toolbar/sheet-size-select";
 import { ToolbarButton } from "@/components/toolbar/toolbar-button";
 import { ToolbarDivider } from "@/components/toolbar/toolbar-divider";
+import { ToolbarOverflowMenu } from "@/components/toolbar/toolbar-overflow-menu";
 import { ZoomControl } from "@/components/toolbar/zoom-control";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,8 @@ export interface EditorToolbarProps {
   onSheetSizeChange: (value: string) => void;
   zoom: number;
   onZoomChange: (value: number) => void;
+  /** Zoom to the whole width of the sheet — offered on a phone. */
+  onZoomToFit: () => void;
   className?: string;
 }
 
@@ -35,6 +38,10 @@ export interface EditorToolbarProps {
  * One raised container holding four groups — history, canvas display toggles,
  * the sheet, and zoom — separated by hairlines. Grouping them into a single
  * surface is what stops the controls reading as a scatter of floating buttons.
+ *
+ * On a phone the grid, snap and zoom controls fold into a menu at the end, so
+ * the rest fits the width of the screen instead of scrolling out of sight.
+ * Switched in CSS, so the row is already the right one on first paint.
  *
  * Snap has nothing behind it yet; it is rendered in its real resting state
  * rather than omitted, so the layout is already final.
@@ -55,20 +62,25 @@ export function EditorToolbar({
   onSheetSizeChange,
   zoom,
   onZoomChange,
+  onZoomToFit,
   className,
 }: EditorToolbarProps) {
   return (
     <TooltipProvider delay={300}>
       <div
         className={cn(
-          "scrollbar-slim flex items-center gap-2 overflow-x-auto px-3 py-2.5 sm:px-4",
+          "scrollbar-slim flex items-center gap-2 overflow-x-auto px-2 py-2.5 sm:px-4",
           className,
         )}
       >
+        {/* Centred on a phone, where it spans most of the width anyway. Auto
+            margins rather than centring the row, because they fall back to the
+            start edge if the toolbar ever overflows — centred content that
+            overflows is cut off on both sides, and only one side scrolls. */}
         <div
           role="toolbar"
           aria-label="Canvas tools"
-          className="inline-flex shrink-0 items-center gap-0.5 rounded-xl border border-border bg-card p-1 shadow-card"
+          className="mx-auto inline-flex shrink-0 items-center gap-0.5 rounded-xl border border-border bg-card p-1 shadow-card md:mx-0"
         >
           <ToolbarButton
             icon={Undo2}
@@ -99,18 +111,20 @@ export function EditorToolbar({
             active={showBackground}
             onClick={() => onShowBackgroundChange(!showBackground)}
           />
-          <ToolbarButton
-            icon={Grid2x2}
-            label="Grid"
-            active={showGrid}
-            onClick={() => onShowGridChange(!showGrid)}
-          />
-          <ToolbarButton
-            icon={Magnet}
-            label="Snap to guides"
-            active={snapEnabled}
-            onClick={() => onSnapEnabledChange(!snapEnabled)}
-          />
+          <span className="hidden md:contents">
+            <ToolbarButton
+              icon={Grid2x2}
+              label="Grid"
+              active={showGrid}
+              onClick={() => onShowGridChange(!showGrid)}
+            />
+            <ToolbarButton
+              icon={Magnet}
+              label="Snap to guides"
+              active={snapEnabled}
+              onClick={() => onSnapEnabledChange(!snapEnabled)}
+            />
+          </span>
 
           <ToolbarDivider />
 
@@ -118,7 +132,23 @@ export function EditorToolbar({
 
           <ToolbarDivider />
 
-          <ZoomControl zoom={zoom} onZoomChange={onZoomChange} />
+          <ZoomControl
+            zoom={zoom}
+            onZoomChange={onZoomChange}
+            className="hidden md:flex"
+          />
+
+          <span className="contents md:hidden">
+            <ToolbarOverflowMenu
+              showGrid={showGrid}
+              onShowGridChange={onShowGridChange}
+              snapEnabled={snapEnabled}
+              onSnapEnabledChange={onSnapEnabledChange}
+              zoom={zoom}
+              onZoomChange={onZoomChange}
+              onZoomToFit={onZoomToFit}
+            />
+          </span>
         </div>
       </div>
     </TooltipProvider>

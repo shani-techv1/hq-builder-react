@@ -12,11 +12,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useFilePicker } from "@/hooks/use-file-picker";
 import {
   designFromJson,
   designToJson,
   exportFileName,
 } from "@/lib/design-document";
+
+/** The files a design is imported from: the JSON this editor exports. */
+const DESIGN_FILE_ACCEPT = "application/json,.json";
 
 /** Hand a generated file to the browser's downloader. */
 function downloadFile(name: string, contents: string) {
@@ -34,6 +38,63 @@ function downloadFile(name: string, contents: string) {
   URL.revokeObjectURL(url);
 }
 
+export interface DesignFile {
+  exportDesign: () => Promise<void>;
+  /** Opens the file dialog; the chosen file is imported straight away. */
+  chooseFile: () => void;
+  /** Spread onto an `<input>` the caller renders, as with `useFilePicker`. */
+  inputProps: React.ComponentPropsWithRef<"input">;
+}
+
+/**
+ * Export and import, for whichever menu offers them: the header's on a
+ * desktop, and on a phone the toolbar's More menu, since the storefront's
+ * header has no room left there.
+ *
+ * `report` is called with `null` as each attempt starts and with the reason if
+ * it fails. Showing the reason is left to the caller — the header keeps a line
+ * for it, while a phone's menu has closed by then and raises a toast.
+ */
+export function useDesignFile(
+  report: (error: string | null) => void,
+): DesignFile {
+  const { snapshotDesign, restoreDesign } = useEditorState();
+
+  const exportDesign = async () => {
+    report(null);
+    const design = snapshotDesign();
+    try {
+      downloadFile(exportFileName(design.name), await designToJson(design));
+    } catch {
+      report("The design could not be exported.");
+    }
+  };
+
+  const importDesign = async ([file]: File[]) => {
+    report(null);
+    const design = designFromJson(await file.text());
+    if (!design) {
+      report("That file isn’t a design this editor can open.");
+      return;
+    }
+    restoreDesign(design);
+  };
+
+  // The picker clears its value after every choice, so picking the same file
+  // twice still imports it twice.
+  const picker = useFilePicker((files) => void importDesign(files));
+
+  return {
+    exportDesign,
+    chooseFile: picker.open,
+    inputProps: {
+      ...picker.inputProps,
+      accept: DESIGN_FILE_ACCEPT,
+      multiple: false,
+    },
+  };
+}
+
 /**
  * Taking a design out of the browser, and bringing one back.
  *
@@ -42,44 +103,12 @@ function downloadFile(name: string, contents: string) {
  * Artwork travels inside the file, so an exported design opens anywhere.
  */
 export function DesignFileMenu() {
-  const { snapshotDesign, restoreDesign } = useEditorState();
   const [error, setError] = React.useState<string | null>(null);
-  const inputRef = React.useRef<HTMLInputElement>(null);
-
-  const handleExport = async () => {
-    setError(null);
-    const design = snapshotDesign();
-    try {
-      downloadFile(exportFileName(design.name), await designToJson(design));
-    } catch {
-      setError("The design could not be exported.");
-    }
-  };
-
-  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    // Cleared straight away so picking the same file twice still fires.
-    event.target.value = "";
-    if (!file) return;
-
-    setError(null);
-    const design = designFromJson(await file.text());
-    if (!design) {
-      setError("That file isn’t a design this editor can open.");
-      return;
-    }
-    restoreDesign(design);
-  };
+  const file = useDesignFile(setError);
 
   return (
     <>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="application/json,.json"
-        hidden
-        onChange={(event) => void handleImport(event)}
-      />
+      <input {...file.inputProps} />
 
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -95,7 +124,7 @@ export function DesignFileMenu() {
         <DropdownMenuContent align="end" sideOffset={6} className="w-52">
           <DropdownMenuItem
             className="px-2 py-1.5"
-            onClick={() => void handleExport()}
+            onClick={() => void file.exportDesign()}
           >
             <Download aria-hidden />
             Export as JSON
@@ -103,10 +132,7 @@ export function DesignFileMenu() {
 
           <DropdownMenuSeparator />
 
-          <DropdownMenuItem
-            className="px-2 py-1.5"
-            onClick={() => inputRef.current?.click()}
-          >
+          <DropdownMenuItem className="px-2 py-1.5" onClick={file.chooseFile}>
             <Upload aria-hidden />
             Import from JSON
           </DropdownMenuItem>

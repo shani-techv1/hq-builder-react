@@ -12,15 +12,17 @@ import { DesignFileMenu } from "@/components/editor/design-file-menu";
 import { SheetCartActions } from "@/components/editor/sheet-cart-actions";
 import { Workspace } from "@/components/editor/workspace";
 import { EditorHeader } from "@/components/header/editor-header";
+import { BottomSheet } from "@/components/panels/bottom-sheet";
 import { PanelContent } from "@/components/panels/panel-content";
 import { PanelHeader } from "@/components/panels/panel-header";
 import { SlidingPanel } from "@/components/panels/sliding-panel";
-import { Sidebar } from "@/components/sidebar/sidebar";
+import { Sidebar, type SidebarProps } from "@/components/sidebar/sidebar";
 import { toast } from "@/components/ui/toast";
+import { useCompactLayout } from "@/hooks/use-compact-layout";
 import { usePanelController } from "@/hooks/use-panel-controller";
 import { useSaveStatus } from "@/hooks/use-save-status";
 import { getCommerceAdapter, getDesignSource } from "@/lib/commerce";
-import { findNavItem, type PanelId } from "@/lib/navigation";
+import { findNavItem } from "@/lib/navigation";
 import { summarisePreflight } from "@/lib/preflight";
 import type { SaveState } from "@/lib/workspace";
 
@@ -74,7 +76,7 @@ function ShellHeader({
     if (summary) {
       toast.warning(
         "Check this sheet before printing",
-        `${summary}. Open Checks in the left rail to review.`,
+        `${summary}. Open Checks to review.`,
       );
     }
     onSave();
@@ -88,7 +90,11 @@ function ShellHeader({
       onSave={handleSave}
       actions={
         <>
-          <DesignFileMenu />
+          {/* On a phone, export and import move to the toolbar's More menu
+              and leave this bar to the cart. */}
+          <span className="hidden md:contents">
+            <DesignFileMenu />
+          </span>
           <SheetCartActions />
           <AccountMenu />
         </>
@@ -97,26 +103,11 @@ function ShellHeader({
   );
 }
 
-/** The rail, badged with the number of warnings waiting in Checks. */
-function ShellSidebar({
-  activePanel,
-  rememberedPanel,
-  onSelect,
-}: {
-  activePanel: PanelId | null;
-  rememberedPanel: PanelId | null;
-  onSelect: (id: PanelId) => void;
-}) {
+/** The rail or tab bar, badged with the number of warnings waiting in Checks. */
+function ShellSidebar(props: Omit<SidebarProps, "badges">) {
   const { preflight } = useEditorState();
 
-  return (
-    <Sidebar
-      activePanel={activePanel}
-      rememberedPanel={rememberedPanel}
-      badges={{ preflight: preflight.total }}
-      onSelect={onSelect}
-    />
-  );
+  return <Sidebar {...props} badges={{ preflight: preflight.total }} />;
 }
 
 /**
@@ -127,6 +118,11 @@ function ShellSidebar({
  * narrows the canvas instead of hiding it. It keeps rendering the remembered
  * menu while it animates closed; without that, `activePanel` dropping to
  * `null` would blank its contents a frame before it finished collapsing.
+ *
+ * On a phone the same pieces are stacked instead: the workspace, the open
+ * panel as a sheet beneath it, and the rail turned into a tab bar along the
+ * bottom edge, where a thumb reaches it. The panel still takes its space from
+ * the canvas rather than covering it — here from the canvas's height.
  */
 export function EditorShell() {
   const {
@@ -138,6 +134,8 @@ export function EditorShell() {
     rootRef,
     panelRef,
   } = usePanelController();
+
+  const compact = useCompactLayout();
 
   const [designName, setDesignName] = React.useState(DEFAULT_DESIGN_NAME);
 
@@ -187,13 +185,37 @@ export function EditorShell() {
     [openPanel],
   );
 
+  const dismissPanel = () => {
+    setPanelFocus(null);
+    closePanel();
+  };
+
   const displayedPanel = activePanel ?? rememberedPanel;
   const navItem = displayedPanel ? findNavItem(displayedPanel) : undefined;
+
+  /* One body, rendered into whichever drawer this screen gets. */
+  const panelBody =
+    displayedPanel && navItem ? (
+      <>
+        <PanelHeader
+          title={navItem.title}
+          description={navItem.description}
+          onClose={dismissPanel}
+        />
+        <PanelContent
+          id={displayedPanel}
+          onOpenPanel={openPanel}
+          focus={activePanel ? panelFocus : null}
+        />
+      </>
+    ) : null;
 
   return (
     <div
       ref={rootRef}
-      className="flex h-dvh w-full flex-col overflow-hidden bg-canvas"
+      // Side insets keep a landscape phone's notch off the editor; the
+      // storefront page opts into drawing under it with `viewport-fit=cover`.
+      className="flex h-dvh w-full flex-col overflow-hidden bg-canvas pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
     >
       {/* The provider wraps the header too, so the file menu can reach the
           design it is about to export. It renders no element of its own. */}
@@ -206,6 +228,9 @@ export function EditorShell() {
         onDraftSaved={isEmbedded ? undefined : markSaved}
         designName={designName}
         onDesignNameChange={setDesignName}
+        // A desktop panel sits beside the sheet, so the artwork is already in
+        // view; a phone's covers the part of the sheet it was placed on.
+        onAssetPlaced={compact ? dismissPanel : undefined}
       >
         <ShellHeader
           designName={designName}
@@ -217,7 +242,7 @@ export function EditorShell() {
         <DraftRecoveryGate />
 
         <div className="flex min-h-0 flex-1">
-          <div className="h-full shrink-0">
+          <div className="hidden h-full shrink-0 md:block">
             <ShellSidebar
               activePanel={activePanel}
               rememberedPanel={rememberedPanel}
@@ -227,35 +252,43 @@ export function EditorShell() {
 
           {/* Between the rail and the workspace, so opening it narrows the
               canvas rather than covering it. */}
-          <SlidingPanel
-            isOpen={activePanel !== null}
-            label={navItem?.title ?? "Panel"}
-            panelRef={panelRef}
-            contentKey={displayedPanel ?? "none"}
-          >
-            {displayedPanel && navItem ? (
-              <>
-                <PanelHeader
-                  title={navItem.title}
-                  description={navItem.description}
-                  onClose={() => {
-                    setPanelFocus(null);
-                    closePanel();
-                  }}
-                />
-                <PanelContent
-                  id={displayedPanel}
-                  onOpenPanel={openPanel}
-                  focus={activePanel ? panelFocus : null}
-                />
-              </>
-            ) : null}
-          </SlidingPanel>
+          {compact ? null : (
+            <SlidingPanel
+              isOpen={activePanel !== null}
+              label={navItem?.title ?? "Panel"}
+              panelRef={panelRef}
+              contentKey={displayedPanel ?? "none"}
+            >
+              {panelBody}
+            </SlidingPanel>
+          )}
 
           <main className="relative min-w-0 flex-1 overflow-hidden">
             <Workspace onOpenPanel={openPanel} onOpenPanelAt={openPanelAt} />
           </main>
         </div>
+
+        {/* Between the workspace and the tab bar, so opening it shortens the
+            canvas rather than covering it. */}
+        {compact ? (
+          <BottomSheet
+            isOpen={activePanel !== null}
+            label={navItem?.title ?? "Panel"}
+            panelRef={panelRef}
+            contentKey={displayedPanel ?? "none"}
+            onDismiss={dismissPanel}
+          >
+            {panelBody}
+          </BottomSheet>
+        ) : null}
+
+        <ShellSidebar
+          orientation="horizontal"
+          activePanel={activePanel}
+          rememberedPanel={rememberedPanel}
+          onSelect={selectPanel}
+          className="md:hidden"
+        />
       </EditorStateProvider>
     </div>
   );

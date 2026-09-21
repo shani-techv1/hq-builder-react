@@ -127,6 +127,14 @@ export interface EditorStateProviderProps {
   designName: string;
   /** Set when a restored design brings its own name. */
   onDesignNameChange: (name: string) => void;
+  /**
+   * Called once artwork has been put on the sheet.
+   *
+   * How a phone gets its canvas back: there, the open menu takes most of the
+   * lower half of the screen, and the middle of the sheet — where artwork
+   * lands — is behind it.
+   */
+  onAssetPlaced?: () => void;
   children: React.ReactNode;
 }
 
@@ -141,6 +149,7 @@ export function EditorStateProvider({
   onDraftSaved,
   designName,
   onDesignNameChange,
+  onAssetPlaced,
   children,
 }: EditorStateProviderProps) {
   const base = useCanvasInteraction();
@@ -290,6 +299,7 @@ export function EditorStateProvider({
   const placeAsset = (asset: Asset, at?: PlacementPoint) => {
     canvas.placeAsset(asset, at);
     library.countPlacement(asset.id);
+    onAssetPlaced?.();
   };
 
   const placeAssetById = (assetId: string, at?: PlacementPoint) => {
