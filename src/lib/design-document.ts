@@ -21,10 +21,13 @@ import {
   type CanvasObjectKind,
   type CanvasTypography,
 } from "@/lib/canvas-objects";
-import { DEFAULT_SHEET_SIZE } from "@/lib/workspace";
+import { DEFAULT_SHEET_SIZE, defaultSheetSize } from "@/lib/workspace";
 
 /** Bumped whenever the shape below changes incompatibly. */
 export const DESIGN_SCHEMA_VERSION = 1;
+
+/** What a design is called until the user names it. */
+export const DEFAULT_DESIGN_NAME = "Untitled gang sheet";
 
 /** The parts of the editor's document worth keeping. */
 export interface DesignDocument {
@@ -75,6 +78,25 @@ export interface RestoredDesign {
   document: DesignDocument;
   assets: RestoredAsset[];
 }
+
+/**
+ * A blank sheet, as the editor opens on.
+ *
+ * Applied like any restored design, so clearing the editor — when the account
+ * whose design it was signs out — goes through the same door as loading one,
+ * and leaves no undo history reaching back into the previous design.
+ */
+export const emptyDesign = (): RestoredDesign => ({
+  savedAt: "",
+  name: DEFAULT_DESIGN_NAME,
+  document: {
+    objects: [],
+    sheetSize: defaultSheetSize(),
+    copyCount: 0,
+    placeCount: 0,
+  },
+  assets: [],
+});
 
 export interface SerializeInput {
   name: string;

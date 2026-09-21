@@ -22,14 +22,14 @@ import { useCompactLayout } from "@/hooks/use-compact-layout";
 import { usePanelController } from "@/hooks/use-panel-controller";
 import { useSaveStatus } from "@/hooks/use-save-status";
 import { getCommerceAdapter, getDesignSource } from "@/lib/commerce";
+import { DEFAULT_DESIGN_NAME } from "@/lib/design-document";
 import { findNavItem } from "@/lib/navigation";
 import { summarisePreflight } from "@/lib/preflight";
 import type { SaveState } from "@/lib/workspace";
 
-const DEFAULT_DESIGN_NAME = "Untitled gang sheet";
-
 /**
- * The startup prompt.
+ * The saved-design prompt: at startup, and on signing in to an account that
+ * kept a design for this product.
  *
  * Its own component because it has to sit inside the provider to read the
  * recovery state, and the shell above it is what the provider wraps.
@@ -41,8 +41,9 @@ function DraftRecoveryGate() {
     <DraftRecoveryDialog
       open={recovery.status === "prompting"}
       draft={recovery.draft}
+      reason={recovery.reason}
       onContinue={recovery.continueDraft}
-      onStartNew={recovery.startNew}
+      onDiscard={recovery.discardDraft}
     />
   );
 }

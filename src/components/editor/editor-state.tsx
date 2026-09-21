@@ -2,6 +2,8 @@
 
 import * as React from "react";
 
+import { toast } from "@/components/ui/toast";
+import { useAccount } from "@/hooks/use-account";
 import {
   useCanvasInteraction,
   type CanvasInteraction,
@@ -14,11 +16,13 @@ import {
 import {
   DEFAULT_SHEET_BACKGROUND,
   DEFAULT_ZOOM,
+  getSheetProduct,
   type MeasurementUnit,
 } from "@/lib/workspace";
 import type { CanvasObjectPatch, PlacementPoint } from "@/lib/canvas-objects";
 import type { Asset } from "@/lib/assets";
 import {
+  emptyDesign,
   serializeDocument,
   type RestoredDesign,
   type SerializedDesign,
@@ -99,7 +103,8 @@ export interface EditorState {
    */
   placeAssetById: (assetId: string, at?: PlacementPoint) => void;
   /**
-   * Local persistence: the startup prompt, and the autosave behind it.
+   * Local persistence: the saved-design prompt, and the autosave behind it,
+   * kept per signed-in account and per product.
    *
    * Owned here because a design is its document *and* its artwork, and this is
    * the only place that holds both.
@@ -341,11 +346,37 @@ export function EditorStateProvider({
     });
   };
 
+  /**
+   * Clear the editor as its account leaves.
+   *
+   * By the time this runs the design has been saved under that account, so it
+   * is gone from the screen but not from the browser — and the toast says so,
+   * or a sheet emptying itself on sign-out would read as work lost.
+   */
+  const resetDesign = () => {
+    const hadWork = base.objects.length > 0 || library.assets.length > 0;
+    restoreDesign(emptyDesign());
+    if (hadWork) {
+      toast.success(
+        "Signed out",
+        "Your design is saved to your account on this device. Sign back in to pick it up.",
+      );
+    }
+  };
+
+  /*
+   * A draft belongs to whoever is signed in and to the product this editor was
+   * opened for — one browser can serve several people and several products,
+   * and each should only ever be offered their own.
+   */
+  const { user } = useAccount();
   const recovery = useDraftRecovery({
+    scope: { accountId: user?.id ?? null, productId: getSheetProduct().id },
     document: base.document,
     assets: library.assets,
     name: designName,
     onRestore: restoreDesign,
+    onReset: resetDesign,
     onSaved: onDraftSaved,
   });
 

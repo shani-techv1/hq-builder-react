@@ -15,7 +15,7 @@ import {
   type SheetBootstrap,
 } from "@/lib/shopify";
 import { collectSheetPieces } from "@/lib/sheet-pieces";
-import { setSheetSizes } from "@/lib/workspace";
+import { setSheetProduct, setSheetSizes } from "@/lib/workspace";
 
 /**
  * Storefront entry point.
@@ -27,8 +27,9 @@ import { setSheetSizes } from "@/lib/workspace";
  * The standalone Next app never loads this file, which is what keeps the editor
  * usable — and buildable — with no Shopify anywhere in sight.
  *
- * Ordering matters: the merchant's sheet sizes are installed before anything
- * renders, because the size picker reads the list at render time.
+ * Ordering matters: the merchant's product and sheet sizes are installed before
+ * anything renders, because the size picker reads the list at render time and
+ * the draft for this product is looked up as the editor mounts.
  */
 
 const MOUNT_ID = "sheet-builder-root";
@@ -198,7 +199,9 @@ function boot() {
     return;
   }
 
-  // Before render: the picker reads the list rather than subscribing to it.
+  // Before render: the picker reads the list rather than subscribing to it,
+  // and the product decides which saved draft is this page's.
+  setSheetProduct({ id: bootstrap.product.id, name: bootstrap.product.name });
   setSheetSizes(toSheetSizes(bootstrap.sheetSizes));
   setCommerceAdapter(createAdapter(bootstrap));
 

@@ -124,13 +124,67 @@ export const DEFAULT_SHEET_BACKGROUND = "#ffffff";
 
 /**
  * Fixed production specs shown on the sheet's spec card. Constants rather than
- * per-preset values because they describe the print process, not the sheet.
+ * per-preset values because they describe the print process, not the sheet —
+ * the product being printed is {@link getSheetProduct}.
  */
 export const SHEET_SPEC = {
-  product: "UV DTF Gang Sheet",
   resolution: "300 DPI",
   background: "Transparent background",
 } as const;
+
+/** The product a sheet is being built for. */
+export interface SheetProduct {
+  /**
+   * The id the shop sells it under, or `null` in the standalone editor.
+   *
+   * What a saved draft is filed against, so a sheet started for one product
+   * is never offered back on another's page.
+   */
+  id: string | null;
+  /** Shown on the sheet and wherever a draft is described. */
+  name: string;
+}
+
+/** What the standalone editor builds, with no shop to say otherwise. */
+const STANDALONE_PRODUCT: SheetProduct = {
+  id: null,
+  name: "UV DTF Gang Sheet",
+};
+
+/** Longer than any sensible product title, short enough to stay one line. */
+const MAX_PRODUCT_NAME_LENGTH = 120;
+
+let sheetProduct: SheetProduct = STANDALONE_PRODUCT;
+
+/**
+ * The product this editor was opened for.
+ *
+ * A function rather than a constant for the same reason as the sheet sizes:
+ * one storefront bundle serves every product a merchant sells sheets for, and
+ * which one this is only arrives with the page.
+ */
+export const getSheetProduct = (): SheetProduct => sheetProduct;
+
+/**
+ * Name the product. Called once by the storefront entry before anything
+ * renders; a blank name keeps the standalone one rather than leaving the sheet
+ * unlabelled.
+ *
+ * Checked rather than trusted: it arrives from a global on the page, which the
+ * types describe but nothing enforces.
+ */
+export function setSheetProduct(next: SheetProduct): void {
+  const name =
+    typeof next.name === "string"
+      ? next.name.trim().slice(0, MAX_PRODUCT_NAME_LENGTH)
+      : "";
+  const id = typeof next.id === "string" ? next.id.trim() : "";
+
+  sheetProduct = {
+    id: id || null,
+    name: name || STANDALONE_PRODUCT.name,
+  };
+}
 
 /** Fallback dimensions for presets that don't encode a size, e.g. "custom". */
 const FALLBACK_SHEET = { width: 22, height: 36 };
