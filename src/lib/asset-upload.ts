@@ -77,6 +77,28 @@ export function formatOf(file: File): AssetFormat | null {
   return ACCEPTED_EXTENSIONS[file.name.slice(dot + 1).toLowerCase()] ?? null;
 }
 
+/**
+ * A stand-in for `original` holding processed bytes, or `null` when the bytes
+ * are in a format the editor does not accept.
+ *
+ * Judged by type alone: the name is the original's, so its extension says
+ * nothing about these bytes. The extension is brought in line with them
+ * instead, so a JPG handed back as a PNG isn't listed under a name that says
+ * otherwise.
+ */
+export function replacementFile(original: File, bytes: Blob): File | null {
+  const format = ACCEPTED_TYPES[bytes.type.toLowerCase()];
+  if (!format) return null;
+
+  let name = original.name;
+  if (formatOf(original) !== format) {
+    const dot = name.lastIndexOf(".");
+    // The format names double as extensions: PNG → .png, JPG → .jpg.
+    name = `${dot > 0 ? name.slice(0, dot) : name}.${format.toLowerCase()}`;
+  }
+  return new File([bytes], name, { type: MIME_TYPES[format] });
+}
+
 export interface UploadRejection {
   fileName: string;
   /** Shown to the user verbatim, so it says what to do rather than what broke. */

@@ -4,6 +4,8 @@ import * as React from "react";
 
 import {
   createAssetFromFile,
+  formatOf,
+  replacementFile,
   validateUpload,
   type UploadRejection,
 } from "@/lib/asset-upload";
@@ -17,7 +19,7 @@ import {
   setAssetHostedUrl,
 } from "@/lib/image-cache";
 import type { RestoredAsset } from "@/lib/design-document";
-import { hostArtwork } from "@/lib/image-service";
+import { hostArtwork, trimArtwork } from "@/lib/image-service";
 
 /**
  * File an asset's bytes on the image host, in the background.
@@ -41,6 +43,23 @@ function fileOnHost(asset: Asset, file: Blob): void {
   });
 }
 
+/**
+ * The file with its empty margin cropped off by the image service, or the file
+ * itself when that could not happen.
+ *
+ * Vector artwork is never sent: the service answers in pixels, and flattening
+ * an SVG to crop it would throw away the reason it was uploaded as a vector.
+ * Any failure keeps the original too — untrimmed artwork is still artwork.
+ */
+async function trimmedFile(
+  file: File,
+  onProgress: (percent: number) => void,
+): Promise<File> {
+  if (formatOf(file) === "SVG") return file;
+  const trimmed = await trimArtwork(file, file.name, onProgress);
+  return (trimmed && replacementFile(file, trimmed)) ?? file;
+}
+
 /** `logo.png` → `logo copy.png`, so the extension stays where it belongs. */
 function copyName(name: string): string {
   const dot = name.lastIndexOf(".");
@@ -52,8 +71,24 @@ export interface UploadTask {
   id: string;
   name: string;
   sizeBytes: number;
-  /** 0–100, from the reader's own progress events. */
+  /**
+   * 0–100: bytes sent to be trimmed when the file is, then the reader's own
+   * progress events. Only ever moves forward, so the read never rewinds a bar
+   * the trim already filled.
+   */
   progress: number;
+}
+
+export interface UploadOptions {
+  /**
+   * Crop each file's empty margin on the image service, and keep the cropped
+   * version instead of the original.
+   *
+   * For files straight off the user's device. Artwork that arrives some other
+   * way — a cut-out, which the service has already trimmed, or a Canva export
+   * — goes in as it is.
+   */
+  trim?: boolean;
 }
 
 export interface AssetLibrary {
@@ -71,11 +106,11 @@ export interface AssetLibrary {
 
   uploads: UploadTask[];
   /**
-   * Validate, read and decode files, resolving with the assets that made it.
-   * Rejected files never become tasks — they surface through
-   * {@link AssetLibrary.rejections} instead.
+   * Validate, trim when asked, read and decode files, resolving with the
+   * assets that made it. Rejected files never become tasks — they surface
+   * through {@link AssetLibrary.rejections} instead.
    */
-  uploadFiles: (files: File[]) => Promise<Asset[]>;
+  uploadFiles: (files: File[], options?: UploadOptions) => Promise<Asset[]>;
   /** Files that could not be used, and why. Replaced by the next upload. */
   rejections: UploadRejection[];
   dismissRejections: () => void;
@@ -117,12 +152,20 @@ export function useAssetLibrary(): AssetLibrary {
 
   const trackProgress = React.useCallback((id: string, progress: number) => {
     setUploads((current) =>
-      current.map((task) => (task.id === id ? { ...task, progress } : task)),
+      current.map((task) =>
+        // Forward only: see `UploadTask.progress`.
+        task.id === id
+          ? { ...task, progress: Math.max(task.progress, progress) }
+          : task,
+      ),
     );
   }, []);
 
   const uploadFiles = React.useCallback(
-    async (files: File[]): Promise<Asset[]> => {
+    async (
+      files: File[],
+      { trim = false }: UploadOptions = {},
+    ): Promise<Asset[]> => {
       if (files.length === 0) return [];
 
       const refused: UploadRejection[] = [];
@@ -158,11 +201,16 @@ export function useAssetLibrary(): AssetLibrary {
       // each reports its own progress against its own card.
       const results = await Promise.all(
         accepted.map(async ({ file, task }) => {
+          const onProgress = (progress: number) =>
+            trackProgress(task.id, progress);
           try {
+            // Everything after this works from the trimmed file, so the
+            // library, the sheet and the hosted copy all hold the same artwork.
+            const source = trim ? await trimmedFile(file, onProgress) : file;
             const { asset, blob } = await createAssetFromFile(
-              file,
+              source,
               task.id,
-              (progress) => trackProgress(task.id, progress),
+              onProgress,
             );
             // The canvas finds artwork by asset id alone, and has to keep
             // finding it after the asset leaves the library.

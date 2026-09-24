@@ -188,7 +188,7 @@ export function Workspace({ onOpenPanel, onOpenPanelAt, className }: WorkspacePr
        */
       onOpenPanel("graphics");
 
-      const added = await library.uploadFiles(files);
+      const added = await library.uploadFiles(files, { trim: true });
       // The assets themselves, not their ids: see `placeAssetById`.
       added.forEach((asset, index) => {
         const drift = index * PLACEMENT_DRIFT;

@@ -33,7 +33,7 @@ export function GraphicsPanel() {
     (files: File[]) => {
       // Uploaded from the panel, so the artwork lands in the library and waits
       // to be placed — unlike a drop on the sheet, which means "put it there".
-      void library.uploadFiles(files);
+      void library.uploadFiles(files, { trim: true });
     },
     [library],
   );

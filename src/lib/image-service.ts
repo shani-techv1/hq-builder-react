@@ -118,6 +118,66 @@ export async function hostArtwork(
   }
 }
 
+/**
+ * Crop the empty margin off artwork, and get the result back as bytes.
+ *
+ * Run on files straight off the user's device, so what lands in the library —
+ * and on the sheet, and on the order — is the artwork itself rather than the
+ * canvas it was exported on: a transparent border still takes up room on a gang
+ * sheet, and the sheet is paid for by the inch.
+ *
+ * `XMLHttpRequest` rather than `fetch`, because only the former reports bytes
+ * sent, and this carries the whole print file up before anything comes back.
+ * Listening for that makes the request preflighted, which the service answers
+ * like any other route.
+ *
+ * Returns `null` rather than throwing, like {@link hostArtwork}: trimming
+ * improves an upload, and a service that is down must not turn one away. The
+ * caller keeps the original instead.
+ */
+export function trimArtwork(
+  source: Blob,
+  fileName: string,
+  onProgress: (percent: number) => void,
+): Promise<Blob | null> {
+  const form = new FormData();
+  form.append("image", source, fileName);
+
+  return new Promise((resolve) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", `${IMAGE_API_URL}/api/images/trim`);
+    request.responseType = "blob";
+    // The same allowance as filing the artwork: this carries the same bytes up,
+    // and waits for the crop besides.
+    request.timeout = UPLOAD_TIMEOUT_MS;
+
+    request.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      onProgress(Math.round((event.loaded / event.total) * 100));
+    };
+
+    request.onload = () => {
+      const succeeded = request.status >= 200 && request.status < 300;
+      const blob: unknown = request.response;
+      // A JSON body behind a 200 is a failure envelope, not artwork.
+      resolve(
+        succeeded &&
+          blob instanceof Blob &&
+          blob.size > 0 &&
+          blob.type.startsWith("image/")
+          ? blob
+          : null,
+      );
+    };
+    // Offline, blocked, or slower than the timeout allows.
+    request.onerror = () => resolve(null);
+    request.ontimeout = () => resolve(null);
+    request.onabort = () => resolve(null);
+
+    request.send(form);
+  });
+}
+
 export interface RemovedBackground {
   /** The cut-out artwork. */
   blob: Blob;
