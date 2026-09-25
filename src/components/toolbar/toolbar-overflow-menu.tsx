@@ -1,7 +1,9 @@
 "use client";
 
+import * as React from "react";
 import {
   Download,
+  FolderOpen,
   Grid2x2,
   Magnet,
   MoreHorizontal,
@@ -12,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { useDesignFile } from "@/components/editor/design-file-menu";
+import { SavedDesignsDialog } from "@/components/editor/saved-designs-menu";
 import { ToolbarButton } from "@/components/toolbar/toolbar-button";
 import { toast } from "@/components/ui/toast";
 import {
@@ -45,9 +48,9 @@ export interface ToolbarOverflowMenuProps {
  * fitted to the screen. What stays in the row is what gets pressed while
  * working: history, text, the background preview and the sheet size.
  *
- * The design file's export and import land here too, from the header: on a
- * phone the storefront's cart buttons need the room, and this is the one menu
- * a phone always has.
+ * My designs and the design file's export and import land here too, from the
+ * header: on a phone the storefront's cart buttons need the room, and this is
+ * the one menu a phone always has.
  *
  * The zoom steps keep the menu open, so stepping in three times is three taps
  * rather than three trips back to this button; the readout in the group's
@@ -67,10 +70,12 @@ export function ToolbarOverflowMenu({
   const designFile = useDesignFile((error) => {
     if (error) toast.error(error);
   });
+  const [designsOpen, setDesignsOpen] = React.useState(false);
 
   return (
     <>
       <input {...designFile.inputProps} />
+      <SavedDesignsDialog open={designsOpen} onOpenChange={setDesignsOpen} />
 
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -125,6 +130,16 @@ export function ToolbarOverflowMenu({
               Fit to screen
             </DropdownMenuItem>
           </DropdownMenuGroup>
+
+          <DropdownMenuSeparator />
+
+          <DropdownMenuItem
+            onClick={() => setDesignsOpen(true)}
+            className="py-1.5"
+          >
+            <FolderOpen aria-hidden />
+            My designs
+          </DropdownMenuItem>
 
           <DropdownMenuSeparator />
 

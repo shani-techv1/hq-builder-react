@@ -326,16 +326,18 @@ export function useAssetLibrary(): AssetLibrary {
   }, []);
 
   const restoreAssets = React.useCallback((restored: RestoredAsset[]) => {
-    const rebuilt = restored.map(({ file, ...asset }) => {
+    const rebuilt = restored.map(({ file, hostedUrl, ...asset }) => {
       const source = createOwnedObjectUrl(file);
       registerAssetSource(asset.id, {
         src: source,
         file,
         width: asset.width,
         height: asset.height,
+        hostedUrl,
       });
       // A draft can be days old and was never ordered, so its artwork has
-      // almost certainly never been filed. Start now, on the same terms.
+      // almost certainly never been filed. Start now, on the same terms. A
+      // saved design's artwork came from the host, and is skipped.
       fileOnHost({ ...asset, source } as Asset, file);
       // Nothing else will ask for these. An upload decodes on its way through
       // the pipeline, but a restored asset arrives already described — without

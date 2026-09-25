@@ -213,9 +213,12 @@ export async function collectSheetPieces(
  *
  * The result is written back to the cache, so a second save of the same design
  * — a shopper who returns to the cart and adds another — reuses the upload
- * rather than putting the same bytes on the host again.
+ * rather than putting the same bytes on the host again. Saving to My designs
+ * goes through here too, for the same reason.
  */
-async function hostedUrlFor(asset: SerializedAsset): Promise<string | null> {
+export async function hostedUrlFor(
+  asset: SerializedAsset,
+): Promise<string | null> {
   const known = getAssetHostedUrl(asset.id);
   if (known) return known;
 

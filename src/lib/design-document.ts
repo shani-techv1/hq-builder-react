@@ -67,16 +67,34 @@ export interface SerializedDesign {
   name: string;
   document: DesignDocument;
   assets: SerializedAsset[];
+  /**
+   * The entry in the account's saved designs this is, when it is one.
+   *
+   * Only a draft carries it, so reopening the editor still saves over the same
+   * entry. Exports and the storefront's copy leave it out: a file is a copy,
+   * not the saved design it came from.
+   */
+  savedDesignId?: string;
 }
 
-/** An asset on its way back in, before it has a URL to be drawn from. */
-export type RestoredAsset = Omit<Asset, "source"> & { file: Blob };
+/**
+ * An asset on its way back in, before it has a URL to be drawn from.
+ *
+ * `hostedUrl` is set when the bytes came from the image host — a saved design —
+ * so the library doesn't file the same artwork there a second time.
+ */
+export type RestoredAsset = Omit<Asset, "source"> & {
+  file: Blob;
+  hostedUrl?: string;
+};
 
 export interface RestoredDesign {
   savedAt: string;
   name: string;
   document: DesignDocument;
   assets: RestoredAsset[];
+  /** See {@link SerializedDesign.savedDesignId}. */
+  savedDesignId: string | null;
 }
 
 /**
@@ -96,6 +114,7 @@ export const emptyDesign = (): RestoredDesign => ({
     placeCount: 0,
   },
   assets: [],
+  savedDesignId: null,
 });
 
 export interface SerializeInput {
@@ -106,6 +125,8 @@ export interface SerializeInput {
   files: Map<string, Blob>;
   /** Injected rather than read from the clock, so callers stay testable. */
   savedAt: string;
+  /** Written only when set — see {@link SerializedDesign.savedDesignId}. */
+  savedDesignId?: string | null;
 }
 
 /**
@@ -149,6 +170,7 @@ export function serializeDocument(input: SerializeInput): SerializedDesign {
       placeCount: input.document.placeCount,
     },
     assets,
+    ...(input.savedDesignId ? { savedDesignId: input.savedDesignId } : {}),
   };
 }
 
@@ -392,6 +414,7 @@ export function deserializeDocument(value: unknown): RestoredDesign | null {
       ),
     },
     assets,
+    savedDesignId: optStr(value.savedDesignId) ?? null,
   };
 }
 
@@ -437,10 +460,16 @@ export async function designToJson(design: SerializedDesign): Promise<string> {
   return JSON.stringify({ ...design, assets }, null, 2);
 }
 
-/** Parse an exported file. `null` for anything that isn't one. */
+/**
+ * Parse an exported file. `null` for anything that isn't one.
+ *
+ * Never linked to a saved design, even if the file names one: an import is a
+ * new copy, and saving it must not overwrite whatever that id points at.
+ */
 export function designFromJson(text: string): RestoredDesign | null {
   try {
-    return deserializeDocument(JSON.parse(text));
+    const design = deserializeDocument(JSON.parse(text));
+    return design && { ...design, savedDesignId: null };
   } catch {
     // Not JSON at all.
     return null;

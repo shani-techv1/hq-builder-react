@@ -8,6 +8,7 @@ import {
   clearFailedAttempts,
   cooldownRemaining,
   getAccountSnapshot,
+  getAccountToken,
   getServerAccountSnapshot,
   recordFailedAttempt,
   resendOtp,
@@ -20,6 +21,7 @@ import {
   type AuthErrorCode,
   type Credentials,
   type Registration,
+  type SignedIn,
 } from "@/lib/auth";
 
 /** Confirming an address, and signing into it once confirmed. */
@@ -51,6 +53,14 @@ export interface AccountSession {
   /** The signed-in user, or `null`. */
   user: AccountUser | null;
   isSignedIn: boolean;
+  /**
+   * Whether the session holds a token, which saved designs need.
+   *
+   * False for a session remembered from before the service issued tokens, or
+   * one whose token the service has since refused — signed in, but asked to
+   * sign in again before its saved designs can be reached.
+   */
+  isAuthorized: boolean;
   /** True while a request is in flight. */
   pending: boolean;
 
@@ -82,6 +92,11 @@ export function useAccount(): AccountSession {
     getAccountSnapshot,
     getServerAccountSnapshot,
   );
+  const isAuthorized = React.useSyncExternalStore(
+    subscribeToAccount,
+    () => getAccountToken() !== null,
+    () => false,
+  );
 
   const [pending, setPending] = React.useState(false);
 
@@ -110,14 +125,14 @@ export function useAccount(): AccountSession {
   /**
    * One attempt at the service, whether or not it ends in a session.
    *
-   * Work that establishes one resolves with a user and it is stored; work that
+   * Work that establishes one resolves with the session and it is stored; work that
    * only moves the sign-up along — creating the account, sending another code —
    * resolves with `null` and leaves whoever is signed in exactly as they were.
    * Both share the guard, the brake and the error handling, which is the part
    * that must not be written twice.
    */
   const attempt = React.useCallback(
-    async (work: () => Promise<AccountUser | null>): Promise<AttemptResult> => {
+    async (work: () => Promise<SignedIn | null>): Promise<AttemptResult> => {
       if (inFlight.current) return DISCARDED;
 
       // Nothing is sent while the local brake is on — see `recordFailedAttempt`
@@ -135,12 +150,12 @@ export function useAccount(): AccountSession {
       setPending(true);
 
       try {
-        const user = await work();
-        if (user) {
+        const session = await work();
+        if (session) {
           // Stored before anything renders the result, so the subscription is
           // what tells the UI it worked — there is no second copy to keep in
           // step.
-          storeAccount(user);
+          storeAccount(session);
           clearFailedAttempts();
         }
         return SUCCEEDED;
@@ -174,6 +189,7 @@ export function useAccount(): AccountSession {
   return {
     user,
     isSignedIn: user !== null,
+    isAuthorized,
     pending,
 
     logIn: React.useCallback(

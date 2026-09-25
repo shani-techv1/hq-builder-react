@@ -9,12 +9,13 @@
  * signal that puts an existing user back on the code screen rather than
  * telling them their password is wrong.
  *
- * What the service gives back is a user record and nothing else — no token, no
- * cookie, and there is no endpoint that answers "who am I". So being signed in
- * is a fact this browser remembers rather than a credential it holds: it
- * personalises the editor, and it cannot authorise anything on its own. When
- * the service does start issuing a token, it goes into the store below and
- * travels out of {@link request} — the only two places that would change.
+ * Signing in gives back a user record and a signed token, and there is no
+ * endpoint that answers "who am I". The user personalises the editor; the token
+ * is what the service asks for before it hands over the account's saved
+ * designs, and it authorises nothing else. It is kept in the store below and
+ * leaves only through {@link authorizedRequest}. A session remembered from
+ * before the service issued tokens has none, and the saved designs ask for a
+ * fresh sign-in rather than failing.
  *
  * A password is never stored. It goes into the one request that needs it and
  * is not written to storage, kept in the session, or logged.
@@ -61,6 +62,13 @@ export interface AccountUser {
   id: string;
   name: string;
   email: string;
+}
+
+/** What a successful sign-in establishes. */
+export interface SignedIn {
+  user: AccountUser;
+  /** `null` when the service issued none — it only does once it is configured to. */
+  token: string | null;
 }
 
 export interface Credentials {
@@ -120,6 +128,10 @@ export type AuthErrorCode =
   | "INVALID_OTP"
   /** No account under that address — nothing to verify or send a code to. */
   | "ACCOUNT_NOT_FOUND"
+  /** The saved design isn't there: deleted, or never this account's. */
+  | "NOT_FOUND"
+  /** No token, or one the service refused — signing in again fixes it. */
+  | "SESSION_EXPIRED"
   | "INSECURE_ENDPOINT"
   | "TOO_MANY_ATTEMPTS"
   | "TIMEOUT"
@@ -141,6 +153,13 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 /** Long enough for a slow service, short enough that a hung one gives up. */
 const REQUEST_TIMEOUT_MS = 15_000;
+
+interface RequestOptions {
+  method?: "GET" | "POST" | "PUT" | "DELETE";
+  /** Sent as a bearer token. Only {@link authorizedRequest} passes one. */
+  token?: string;
+  timeoutMs?: number;
+}
 
 /** Where an unencrypted connection is a development detail, not a leak. */
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
@@ -245,30 +264,36 @@ function readUser(value: unknown): AccountUser | null {
  * message and nothing else, and a caller that needs a user says so by reading
  * one out with {@link userFrom}.
  *
- * Only `Content-Type` is sent. The service's CORS policy allows that header
- * alone, so anything else would fail the preflight rather than the request.
- * The rest of the options are about what must *not* travel: no ambient
- * cookies, no `Referer` disclosing which design the user was editing, and no
- * cached copy of an authentication response left in the browser's store.
+ * Only `Content-Type` is sent, plus `Authorization` on an
+ * {@link authorizedRequest}. The service's CORS policy allows those two
+ * headers alone, so anything else would fail the preflight rather than the
+ * request. The rest of the options are about what must *not* travel: no
+ * ambient cookies, no `Referer` disclosing which design the user was editing,
+ * and no cached copy of an authentication response left in the browser's store.
  */
 async function request(
   path: string,
   body: unknown,
   statusCode: (status: number) => AuthErrorCode = codeFor,
+  { method = "POST", token, timeoutMs = REQUEST_TIMEOUT_MS }: RequestOptions = {},
 ): Promise<Record<string, unknown>> {
   assertSecureEndpoint();
+
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (token) headers.Authorization = `Bearer ${token}`;
 
   let response: Response;
   try {
     response = await fetch(`${AUTH_API_URL}${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
       mode: "cors",
       credentials: "omit",
       referrerPolicy: "no-referrer",
       cache: "no-store",
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (cause) {
     // A timeout is a different thing to tell someone than "you're offline" —
@@ -332,6 +357,32 @@ function userFrom(payload: Record<string, unknown>): AccountUser | null {
 }
 
 /**
+ * The service's signed token: two base64url segments joined by a dot.
+ *
+ * Checked for shape only. What it says is the service's business, and whether
+ * it is still good is found out by using it. The shape check is what keeps
+ * anything else — from the response, or from storage — out of a header.
+ */
+const TOKEN_PATTERN = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+const MAX_TOKEN_LENGTH = 1024;
+
+function readToken(value: unknown): string | null {
+  return typeof value === "string" &&
+    value.length <= MAX_TOKEN_LENGTH &&
+    TOKEN_PATTERN.test(value)
+    ? value
+    : null;
+}
+
+/** The user and token in a response, or `null` when it describes no user. */
+function signedInFrom(payload: Record<string, unknown>): SignedIn | null {
+  const user = userFrom(payload);
+  if (!user) return null;
+  const { data } = payload;
+  return { user, token: readToken(isRecord(data) ? data.token : undefined) };
+}
+
+/**
  * Register, and get a code sent to the address.
  *
  * No user comes back and none is expected: the account exists but is inert
@@ -351,31 +402,31 @@ export async function signUp(details: Registration): Promise<void> {
   });
 }
 
-export async function signIn(credentials: Credentials): Promise<AccountUser> {
+export async function signIn(credentials: Credentials): Promise<SignedIn> {
   const payload = await request("/api/auth/login", {
     email: credentials.email.trim().slice(0, MAX_EMAIL_LENGTH),
     password: credentials.password.slice(0, MAX_PASSWORD_LENGTH),
   });
 
-  const user = userFrom(payload);
-  if (!user) {
+  const signedIn = signedInFrom(payload);
+  if (!signedIn) {
     throw new AuthError(
       "REQUEST_FAILED",
       "The account service returned something unexpected.",
     );
   }
-  return user;
+  return signedIn;
 }
 
 /**
  * Confirm the address with the code from the email.
  *
- * Resolves with the user when the service describes one, and with `null` when
- * it only confirms — in which case the account is now verified and a normal
- * sign-in is what establishes the session. Both are successes; only a throw
- * means the code was refused.
+ * Resolves with the session when the service describes a user, and with `null`
+ * when it only confirms — in which case the account is now verified and a
+ * normal sign-in is what establishes the session. Both are successes; only a
+ * throw means the code was refused.
  */
-export const verifyOtp = (submission: OtpSubmission): Promise<AccountUser | null> =>
+export const verifyOtp = (submission: OtpSubmission): Promise<SignedIn | null> =>
   request(
     "/api/auth/verify-otp",
     {
@@ -383,7 +434,7 @@ export const verifyOtp = (submission: OtpSubmission): Promise<AccountUser | null
       otp: submission.otp.trim().slice(0, OTP_LENGTH),
     },
     codeForVerify,
-  ).then(userFrom);
+  ).then(signedInFrom);
 
 /** Send another code to an address that hasn't been confirmed yet. */
 export async function resendOtp(email: string): Promise<void> {
@@ -599,12 +650,24 @@ export function clearFailedAttempts(): void {
 /**
  * `localStorage`, so a reload doesn't sign the user out.
  *
- * Safe to keep there because it is a profile, not a credential: the worst it
- * can do in the wrong hands is show the wrong name in the header, and it is
- * re-validated on the way out. If this ever holds a token, that calculation
- * changes completely and this is the comment that has to change with it.
+ * The profile is harmless there: the worst it can do in the wrong hands is
+ * show the wrong name in the header, and it is re-validated on the way out.
+ *
+ * The token is a credential, and keeping it here is a trade-off made on
+ * purpose. Any script on this origin can read `localStorage` — on a storefront
+ * that includes the shop's theme and apps. The alternative, an HttpOnly cookie
+ * on the service's own domain, would be a third-party cookie from the
+ * storefront, and Safari and increasingly Chrome don't send those. What limits
+ * the exposure is what the token can do: it opens the account's saved designs
+ * and nothing else, cannot sign in or change the password, and lapses with the
+ * session below.
  */
 const STORAGE_KEY = "design-builder:account:v1";
+
+/** A remembered sign-in, as read back out of storage and validated. */
+interface StoredSession extends SignedIn {
+  signedInAt: number;
+}
 
 /**
  * How long a remembered session lasts.
@@ -620,7 +683,7 @@ const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const listeners = new Set<() => void>();
 
 /** Cached, so the snapshot stays referentially stable between changes. */
-let snapshot: AccountUser | null | undefined;
+let snapshot: StoredSession | null | undefined;
 
 function announce(): void {
   snapshot = undefined;
@@ -643,7 +706,7 @@ export function subscribeToAccount(listener: () => void): () => void {
   };
 }
 
-function read(): AccountUser | null {
+function read(): StoredSession | null {
   if (typeof window === "undefined") return null;
 
   let raw: string | null = null;
@@ -668,32 +731,57 @@ function read(): AccountUser | null {
     const age = Date.now() - signedInAt;
     if (age < 0 || age > SESSION_MAX_AGE_MS) return null;
 
-    // Through the same validator as a response: storage is writable by
+    // Through the same validators as a response: storage is writable by
     // anything else running on this origin.
-    return readUser(parsed.user);
+    const user = readUser(parsed.user);
+    if (!user) return null;
+    return { user, token: readToken(parsed.token), signedInAt };
   } catch {
     return null;
   }
 }
 
-export function getAccountSnapshot(): AccountUser | null {
+function currentSession(): StoredSession | null {
   if (snapshot === undefined) snapshot = read();
   return snapshot;
+}
+
+export function getAccountSnapshot(): AccountUser | null {
+  return currentSession()?.user ?? null;
 }
 
 /** Nothing is stored during a server render, so nobody is signed in there. */
 export const getServerAccountSnapshot = (): AccountUser | null => null;
 
-export function storeAccount(user: AccountUser): void {
+/** The signed-in account's token, or `null` — signed out, or signed in without one. */
+export function getAccountToken(): string | null {
+  return currentSession()?.token ?? null;
+}
+
+function write(session: StoredSession): void {
   try {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ user, signedInAt: Date.now() }),
-    );
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
   } catch {
     // Nothing to do — the session simply won't survive a refresh.
   }
   announce();
+}
+
+export function storeAccount({ user, token }: SignedIn): void {
+  write({ user, token, signedInAt: Date.now() });
+}
+
+/**
+ * Drop a token the service refused, and stay signed in.
+ *
+ * The profile is still right, and the editor keeps working without a token;
+ * only the saved designs need one. Losing the dead token is what turns the
+ * next attempt into "sign in again" rather than the same failure twice.
+ * `signedInAt` is kept, so this can't extend the session.
+ */
+function forgetToken(): void {
+  const current = currentSession();
+  if (current?.token) write({ ...current, token: null });
 }
 
 export function clearAccount(): void {
@@ -703,6 +791,58 @@ export function clearAccount(): void {
     // Already gone, as far as anything here can tell.
   }
   announce();
+}
+
+/* --------------------------- Authorised requests -------------------------- */
+
+const SIGN_IN_AGAIN = "Sign in again to use your saved designs.";
+
+/** 401 is a refused token here, not a wrong password. */
+const codeForAuthorized = (status: number): AuthErrorCode => {
+  if (status === 401) return "SESSION_EXPIRED";
+  if (status === 404) return "NOT_FOUND";
+  return codeFor(status);
+};
+
+export interface AuthorizedRequestOptions {
+  method?: RequestOptions["method"];
+  /** Sent as JSON. Omitted for a GET or DELETE. */
+  body?: unknown;
+  timeoutMs?: number;
+}
+
+/**
+ * A request made as the signed-in account — the one way the token leaves.
+ *
+ * Throws `SESSION_EXPIRED` without sending anything when there is no token, and
+ * drops the token when the service refuses it, so the account stays signed in
+ * and the caller can ask for a fresh sign-in instead.
+ */
+export async function authorizedRequest(
+  path: string,
+  { method = "GET", body, timeoutMs }: AuthorizedRequestOptions = {},
+): Promise<Record<string, unknown>> {
+  const token = getAccountToken();
+  if (!token) throw new AuthError("SESSION_EXPIRED", SIGN_IN_AGAIN);
+
+  try {
+    return await request(path, body, codeForAuthorized, {
+      method,
+      token,
+      timeoutMs,
+    });
+  } catch (cause) {
+    // Only the token that was refused: another tab may have signed in afresh
+    // while this request was out.
+    if (
+      cause instanceof AuthError &&
+      cause.code === "SESSION_EXPIRED" &&
+      getAccountToken() === token
+    ) {
+      forgetToken();
+    }
+    throw cause;
+  }
 }
 
 /* ------------------------------- Formatting ------------------------------- */

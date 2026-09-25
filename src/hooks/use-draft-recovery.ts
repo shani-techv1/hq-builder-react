@@ -63,6 +63,8 @@ export interface UseDraftRecoveryOptions {
   document: DesignDocument;
   assets: Asset[];
   name: string;
+  /** The saved design on screen, if it is one — kept with the draft. */
+  savedDesignId: string | null;
   /** Applies a restored design — from the draft, or from an imported file. */
   onRestore: (design: RestoredDesign) => void;
   /** Empties the editor, for when the account whose design it holds leaves. */
@@ -82,6 +84,7 @@ interface Snapshot {
   document: DesignDocument;
   assets: Asset[];
   name: string;
+  savedDesignId: string | null;
 }
 
 /**
@@ -94,7 +97,7 @@ interface Snapshot {
  */
 function persist(
   key: string,
-  { document, assets, name }: Snapshot,
+  { document, assets, name, savedDesignId }: Snapshot,
 ): Promise<boolean> {
   if (document.objects.length === 0 && assets.length === 0) {
     return clearDraft(key).then(() => true);
@@ -114,6 +117,7 @@ function persist(
       assets,
       files,
       savedAt: new Date().toISOString(),
+      savedDesignId,
     }),
   );
 }
@@ -148,6 +152,7 @@ export function useDraftRecovery({
   document,
   assets,
   name,
+  savedDesignId,
   onRestore,
   onReset,
   onSaved,
@@ -190,6 +195,7 @@ export function useDraftRecovery({
     document,
     assets,
     name,
+    savedDesignId,
     onRestore,
     onReset,
     onSaved,
@@ -260,6 +266,7 @@ export function useDraftRecovery({
       document,
       assets,
       name,
+      savedDesignId,
       onRestore,
       onReset,
       onSaved,
@@ -301,7 +308,7 @@ export function useDraftRecovery({
     let superseded = false;
 
     const timer = setTimeout(() => {
-      void persist(key, { document, assets, name }).then((stored) => {
+      void persist(key, { document, assets, name, savedDesignId }).then((stored) => {
         if (!stored || superseded) return;
         latest.current.onSaved?.();
 
@@ -317,7 +324,7 @@ export function useDraftRecovery({
       superseded = true;
       clearTimeout(timer);
     };
-  }, [status, key, document, assets, name]);
+  }, [status, key, document, assets, name, savedDesignId]);
 
   return {
     status,

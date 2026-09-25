@@ -71,8 +71,10 @@ const isoDate = (date: Date) =>
  * "Today at 2:43 PM" for something from this session, a date for anything
  * older — the relative form is what tells the user whether this is the work
  * they were doing five minutes ago or something they had long forgotten.
+ *
+ * Exported for the My designs list, which dates its rows the same way.
  */
-function lastEdited(iso: string): string | null {
+export function lastEdited(iso: string): string | null {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return null;
 

@@ -112,6 +112,17 @@ export interface EditorState {
   recovery: DraftRecovery;
   /** Apply a design from a draft or an imported file, replacing what's open. */
   restoreDesign: (design: RestoredDesign) => void;
+  /**
+   * Which of the account's saved designs is on screen, if any.
+   *
+   * Every way a design arrives goes through {@link restoreDesign}, which sets
+   * this from the design itself — so opening one from My designs links it,
+   * and an import, a fresh sheet or a sign-out unlinks it. Saving to My
+   * designs overwrites the linked entry rather than adding another.
+   */
+  savedDesignId: string | null;
+  /** Link the design on screen to a saved entry, or unlink it. */
+  setSavedDesignId: React.Dispatch<React.SetStateAction<string | null>>;
   /** The current design in portable form, for export. */
   snapshotDesign: () => SerializedDesign;
 }
@@ -320,6 +331,10 @@ export function EditorStateProvider({
    * document arriving before its library would render a sheet of placeholders
    * until the next pass.
    */
+  const [savedDesignId, setSavedDesignId] = React.useState<string | null>(
+    null,
+  );
+
   const { restoreAssets } = library;
   const { replaceDocument } = base;
   const restoreDesign = React.useCallback(
@@ -327,6 +342,7 @@ export function EditorStateProvider({
       restoreAssets(design.assets);
       replaceDocument(design.document);
       onDesignNameChange(design.name);
+      setSavedDesignId(design.savedDesignId);
     },
     [restoreAssets, replaceDocument, onDesignNameChange],
   );
@@ -375,6 +391,7 @@ export function EditorStateProvider({
     document: base.document,
     assets: library.assets,
     name: designName,
+    savedDesignId,
     onRestore: restoreDesign,
     onReset: resetDesign,
     onSaved: onDraftSaved,
@@ -417,6 +434,8 @@ export function EditorStateProvider({
         placeAssetById,
         recovery,
         restoreDesign,
+        savedDesignId,
+        setSavedDesignId,
         snapshotDesign,
       }}
     >

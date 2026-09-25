@@ -9,6 +9,7 @@ import {
 } from "@/components/editor/editor-state";
 import { DraftRecoveryDialog } from "@/components/editor/draft-recovery-dialog";
 import { DesignFileMenu } from "@/components/editor/design-file-menu";
+import { SavedDesignsMenu } from "@/components/editor/saved-designs-menu";
 import { SheetCartActions } from "@/components/editor/sheet-cart-actions";
 import { Workspace } from "@/components/editor/workspace";
 import { EditorHeader } from "@/components/header/editor-header";
@@ -91,9 +92,10 @@ function ShellHeader({
       onSave={handleSave}
       actions={
         <>
-          {/* On a phone, export and import move to the toolbar's More menu
-              and leave this bar to the cart. */}
+          {/* On a phone, My designs, export and import move to the toolbar's
+              More menu and leave this bar to the cart. */}
           <span className="hidden md:contents">
+            <SavedDesignsMenu />
             <DesignFileMenu />
           </span>
           <SheetCartActions />
