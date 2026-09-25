@@ -87,18 +87,6 @@ async function persist(bootstrap: SheetBootstrap, payload: DesignPayload) {
 
 function createAdapter(bootstrap: SheetBootstrap) {
   return {
-    async saveDesign(payload: DesignPayload) {
-      try {
-        await persist(bootstrap, payload);
-        return { ok: true as const };
-      } catch (error) {
-        return {
-          ok: false as const,
-          error: error instanceof Error ? error.message : "Could not save.",
-        };
-      }
-    },
-
     async addToCart(payload: DesignPayload, quantity: number) {
       try {
         if (payload.design.document.objects.length === 0) {

@@ -75,6 +75,12 @@ export interface SerializedDesign {
    * not the saved design it came from.
    */
   savedDesignId?: string;
+  /**
+   * Set when a draft is exactly what its saved design holds, so a reload can
+   * still say "Saved". Left out otherwise — as drafts from before it was
+   * recorded leave it out, which reads them the safe way.
+   */
+  matchesSavedDesign?: true;
 }
 
 /**
@@ -95,6 +101,8 @@ export interface RestoredDesign {
   assets: RestoredAsset[];
   /** See {@link SerializedDesign.savedDesignId}. */
   savedDesignId: string | null;
+  /** See {@link SerializedDesign.matchesSavedDesign}. */
+  matchesSavedDesign: boolean;
 }
 
 /**
@@ -115,6 +123,7 @@ export const emptyDesign = (): RestoredDesign => ({
   },
   assets: [],
   savedDesignId: null,
+  matchesSavedDesign: false,
 });
 
 export interface SerializeInput {
@@ -127,6 +136,8 @@ export interface SerializeInput {
   savedAt: string;
   /** Written only when set — see {@link SerializedDesign.savedDesignId}. */
   savedDesignId?: string | null;
+  /** Written only with a saved design id — see {@link SerializedDesign.matchesSavedDesign}. */
+  matchesSavedDesign?: boolean;
 }
 
 /**
@@ -171,6 +182,9 @@ export function serializeDocument(input: SerializeInput): SerializedDesign {
     },
     assets,
     ...(input.savedDesignId ? { savedDesignId: input.savedDesignId } : {}),
+    ...(input.savedDesignId && input.matchesSavedDesign
+      ? { matchesSavedDesign: true as const }
+      : {}),
   };
 }
 
@@ -401,6 +415,8 @@ export function deserializeDocument(value: unknown): RestoredDesign | null {
       return match ? Math.max(best, Number(match[1])) : best;
     }, 0);
 
+  const savedDesignId = optStr(value.savedDesignId) ?? null;
+
   return {
     savedAt: str(value.savedAt, ""),
     name: str(value.name, "Untitled design"),
@@ -414,7 +430,8 @@ export function deserializeDocument(value: unknown): RestoredDesign | null {
       ),
     },
     assets,
-    savedDesignId: optStr(value.savedDesignId) ?? null,
+    savedDesignId,
+    matchesSavedDesign: savedDesignId !== null && value.matchesSavedDesign === true,
   };
 }
 
@@ -469,7 +486,7 @@ export async function designToJson(design: SerializedDesign): Promise<string> {
 export function designFromJson(text: string): RestoredDesign | null {
   try {
     const design = deserializeDocument(JSON.parse(text));
-    return design && { ...design, savedDesignId: null };
+    return design && { ...design, savedDesignId: null, matchesSavedDesign: false };
   } catch {
     // Not JSON at all.
     return null;

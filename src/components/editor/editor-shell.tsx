@@ -9,6 +9,7 @@ import {
 } from "@/components/editor/editor-state";
 import { DraftRecoveryDialog } from "@/components/editor/draft-recovery-dialog";
 import { DesignFileMenu } from "@/components/editor/design-file-menu";
+import { SaveDesignButtons } from "@/components/editor/save-design-buttons";
 import { SavedDesignsMenu } from "@/components/editor/saved-designs-menu";
 import { SheetCartActions } from "@/components/editor/sheet-cart-actions";
 import { Workspace } from "@/components/editor/workspace";
@@ -18,14 +19,14 @@ import { PanelContent } from "@/components/panels/panel-content";
 import { PanelHeader } from "@/components/panels/panel-header";
 import { SlidingPanel } from "@/components/panels/sliding-panel";
 import { Sidebar, type SidebarProps } from "@/components/sidebar/sidebar";
-import { toast } from "@/components/ui/toast";
 import { useCompactLayout } from "@/hooks/use-compact-layout";
 import { usePanelController } from "@/hooks/use-panel-controller";
-import { useSaveStatus } from "@/hooks/use-save-status";
-import { getCommerceAdapter, getDesignSource } from "@/lib/commerce";
+import {
+  SavedDesignsProvider,
+  useSavedDesigns,
+} from "@/hooks/use-saved-designs";
 import { DEFAULT_DESIGN_NAME } from "@/lib/design-document";
 import { findNavItem } from "@/lib/navigation";
-import { summarisePreflight } from "@/lib/preflight";
 import type { SaveState } from "@/lib/workspace";
 
 /**
@@ -50,46 +51,38 @@ function DraftRecoveryGate() {
 }
 
 /**
- * The header, with Save reporting whatever the sheet's checks found.
+ * The header, with the save indicator following My designs.
  *
- * Warned as the save starts rather than after it lands, because the warning is
- * about the artwork and not about whether the save worked — and it never
- * stands in the way of one: an overlap can be the design, and artwork under
- * 300 DPI can still be fine for the job.
+ * "Saved" means the saved design on screen holds exactly what is on the
+ * sheet. Work that was never saved there reads as unsaved — even with a draft
+ * in this browser, because a draft is not somewhere the design can be opened
+ * again from. An empty sheet has nothing to save, so it reads as saved.
  *
- * Its own component because the checks come from the design and the save comes
- * from the shell above the provider; this is where the two meet.
+ * Its own component because both halves come from inside the providers, and
+ * the shell sits above them.
  */
 function ShellHeader({
   designName,
   onDesignNameChange,
-  saveStatus,
-  onSave,
 }: {
   designName: string;
   onDesignNameChange: (name: string) => void;
-  saveStatus: SaveState;
-  onSave: () => void;
 }) {
-  const { preflight } = useEditorState();
+  const { matchesSavedDesign } = useEditorState();
+  const saved = useSavedDesigns();
 
-  const handleSave = () => {
-    const summary = summarisePreflight(preflight);
-    if (summary) {
-      toast.warning(
-        "Check this sheet before printing",
-        `${summary}. Open Checks to review.`,
-      );
-    }
-    onSave();
-  };
+  const saveStatus: SaveState =
+    saved.busy?.kind === "save"
+      ? "saving"
+      : saved.hasWork && !matchesSavedDesign
+        ? "unsaved"
+        : "saved";
 
   return (
     <EditorHeader
       designName={designName}
       onDesignNameChange={onDesignNameChange}
       saveStatus={saveStatus}
-      onSave={handleSave}
       actions={
         <>
           {/* On a phone, My designs, export and import move to the toolbar's
@@ -100,6 +93,7 @@ function ShellHeader({
           </span>
           <SheetCartActions />
           <AccountMenu />
+          <SaveDesignButtons />
         </>
       }
     />
@@ -141,35 +135,6 @@ export function EditorShell() {
   const compact = useCompactLayout();
 
   const [designName, setDesignName] = React.useState(DEFAULT_DESIGN_NAME);
-
-  /**
-   * Save through the storefront when there is one, and fall back to the local
-   * indicator when there isn't. Resolved per call rather than captured, because
-   * the adapter is installed by the embed entry before React mounts and stays
-   * null for the whole life of the standalone app.
-   */
-  const persist = React.useCallback(async () => {
-    const adapter = getCommerceAdapter();
-    const source = getDesignSource();
-    if (!adapter || !source) return { ok: true as const };
-    return adapter.saveDesign(source());
-  }, []);
-
-  /**
-   * Resolved once, for the same reason `persist` is resolved per call: the
-   * adapter is installed before React mounts and never changes afterwards.
-   */
-  const isEmbedded = getCommerceAdapter() !== null;
-
-  const { status, markDirty, markSaved, save } = useSaveStatus(
-    "saved",
-    isEmbedded ? persist : undefined,
-  );
-
-  const handleDesignNameChange = (name: string) => {
-    setDesignName(name);
-    markDirty();
-  };
 
   /**
    * A row the next panel opening should land on.
@@ -222,76 +187,70 @@ export function EditorShell() {
     >
       {/* The provider wraps the header too, so the file menu can reach the
           design it is about to export. It renders no element of its own. */}
-      {/* Standalone, the draft is the only place the sheet is kept, so the
-          autosave behind it is what the indicator should follow. Embedded,
-          "Saved" has to keep meaning the storefront has it — a record in this
-          browser is not the shopper's design reaching the shop. */}
       <EditorStateProvider
-        onDesignChange={markDirty}
-        onDraftSaved={isEmbedded ? undefined : markSaved}
         designName={designName}
         onDesignNameChange={setDesignName}
         // A desktop panel sits beside the sheet, so the artwork is already in
         // view; a phone's covers the part of the sheet it was placed on.
         onAssetPlaced={compact ? dismissPanel : undefined}
       >
-        <ShellHeader
-          designName={designName}
-          onDesignNameChange={handleDesignNameChange}
-          saveStatus={status}
-          onSave={save}
-        />
+        <SavedDesignsProvider>
+          <ShellHeader
+            designName={designName}
+            onDesignNameChange={setDesignName}
+          />
 
-        <DraftRecoveryGate />
+          <DraftRecoveryGate />
 
-        <div className="flex min-h-0 flex-1">
-          <div className="hidden h-full shrink-0 md:block">
-            <ShellSidebar
-              activePanel={activePanel}
-              rememberedPanel={rememberedPanel}
-              onSelect={selectPanel}
-            />
+          <div className="flex min-h-0 flex-1">
+            <div className="hidden h-full shrink-0 md:block">
+              <ShellSidebar
+                activePanel={activePanel}
+                rememberedPanel={rememberedPanel}
+                onSelect={selectPanel}
+              />
+            </div>
+
+            {/* Between the rail and the workspace, so opening it narrows the
+                canvas rather than covering it. */}
+            {compact ? null : (
+              <SlidingPanel
+                isOpen={activePanel !== null}
+                label={navItem?.title ?? "Panel"}
+                panelRef={panelRef}
+                contentKey={displayedPanel ?? "none"}
+              >
+                {panelBody}
+              </SlidingPanel>
+            )}
+
+            <main className="relative min-w-0 flex-1 overflow-hidden">
+              <Workspace onOpenPanel={openPanel} onOpenPanelAt={openPanelAt} />
+            </main>
           </div>
 
-          {/* Between the rail and the workspace, so opening it narrows the
+          {/* Between the workspace and the tab bar, so opening it shortens the
               canvas rather than covering it. */}
-          {compact ? null : (
-            <SlidingPanel
+          {compact ? (
+            <BottomSheet
               isOpen={activePanel !== null}
               label={navItem?.title ?? "Panel"}
               panelRef={panelRef}
               contentKey={displayedPanel ?? "none"}
+              onDismiss={dismissPanel}
             >
               {panelBody}
-            </SlidingPanel>
-          )}
+            </BottomSheet>
+          ) : null}
 
-          <main className="relative min-w-0 flex-1 overflow-hidden">
-            <Workspace onOpenPanel={openPanel} onOpenPanelAt={openPanelAt} />
-          </main>
-        </div>
-
-        {/* Between the workspace and the tab bar, so opening it shortens the
-            canvas rather than covering it. */}
-        {compact ? (
-          <BottomSheet
-            isOpen={activePanel !== null}
-            label={navItem?.title ?? "Panel"}
-            panelRef={panelRef}
-            contentKey={displayedPanel ?? "none"}
-            onDismiss={dismissPanel}
-          >
-            {panelBody}
-          </BottomSheet>
-        ) : null}
-
-        <ShellSidebar
-          orientation="horizontal"
-          activePanel={activePanel}
-          rememberedPanel={rememberedPanel}
-          onSelect={selectPanel}
-          className="md:hidden"
-        />
+          <ShellSidebar
+            orientation="horizontal"
+            activePanel={activePanel}
+            rememberedPanel={rememberedPanel}
+            onSelect={selectPanel}
+            className="md:hidden"
+          />
+        </SavedDesignsProvider>
       </EditorStateProvider>
     </div>
   );

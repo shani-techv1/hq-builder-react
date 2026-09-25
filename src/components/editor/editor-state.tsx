@@ -19,11 +19,12 @@ import {
   getSheetProduct,
   type MeasurementUnit,
 } from "@/lib/workspace";
-import type { CanvasObjectPatch, PlacementPoint } from "@/lib/canvas-objects";
+import type { PlacementPoint } from "@/lib/canvas-objects";
 import type { Asset } from "@/lib/assets";
 import {
   emptyDesign,
   serializeDocument,
+  type DesignDocument,
   type RestoredDesign,
   type SerializedDesign,
 } from "@/lib/design-document";
@@ -62,6 +63,22 @@ export interface WorkspaceSettings {
   unit: MeasurementUnit;
   setUnit: (value: MeasurementUnit) => void;
 }
+
+/**
+ * The design on screen at one moment, by identity.
+ *
+ * Every edit replaces at least one of the three — the fact autosave keys off —
+ * so two versions holding the same three are the same design, and selecting,
+ * zooming or panning never makes a new one.
+ */
+export interface DesignVersion {
+  document: DesignDocument;
+  assets: Asset[];
+  name: string;
+}
+
+const sameVersion = (a: DesignVersion, b: DesignVersion) =>
+  a.document === b.document && a.assets === b.assets && a.name === b.name;
 
 export interface EditorState {
   canvas: CanvasInteraction;
@@ -121,8 +138,18 @@ export interface EditorState {
    * designs overwrites the linked entry rather than adding another.
    */
   savedDesignId: string | null;
-  /** Link the design on screen to a saved entry, or unlink it. */
-  setSavedDesignId: React.Dispatch<React.SetStateAction<string | null>>;
+  /**
+   * Whether the linked saved design holds exactly what is on screen — what
+   * the header's "Saved" means. False whenever none is linked: My designs is
+   * the one place a design is kept, and a draft in this browser is not it.
+   */
+  matchesSavedDesign: boolean;
+  /** The design on screen now, to record what a save to My designs held. */
+  version: DesignVersion;
+  /** Link the design on screen to the saved entry `id`, which holds `version` of it. */
+  linkSavedDesign: (id: string, version: DesignVersion) => void;
+  /** Unlink the design on screen from `id`, if that is the entry it is linked to. */
+  unlinkSavedDesign: (id: string) => void;
   /** The current design in portable form, for export. */
   snapshotDesign: () => SerializedDesign;
 }
@@ -130,15 +157,6 @@ export interface EditorState {
 const EditorStateContext = React.createContext<EditorState | null>(null);
 
 export interface EditorStateProviderProps {
-  /** Called whenever something happens that should count against the save. */
-  onDesignChange?: () => void;
-  /**
-   * Called when the local draft has been written.
-   *
-   * Left unset wherever the design has somewhere further to go than this
-   * browser, so that "Saved" cannot come to mean "saved locally".
-   */
-  onDraftSaved?: () => void;
   /** The design's name, carried into drafts and exports. */
   designName: string;
   /** Set when a restored design brings its own name. */
@@ -154,21 +172,14 @@ export interface EditorStateProviderProps {
   children: React.ReactNode;
 }
 
-/**
- * Owns the canvas selection and the sheet settings for the whole editor.
- *
- * Mutations are wrapped once here so every surface that changes the design
- * marks it unsaved, rather than each call site remembering to.
- */
+/** Owns the canvas selection and the sheet settings for the whole editor. */
 export function EditorStateProvider({
-  onDesignChange,
-  onDraftSaved,
   designName,
   onDesignNameChange,
   onAssetPlaced,
   children,
 }: EditorStateProviderProps) {
-  const base = useCanvasInteraction();
+  const canvas = useCanvasInteraction();
   const library = useAssetLibrary();
 
   const [zoom, setZoom] = React.useState(DEFAULT_ZOOM);
@@ -185,99 +196,8 @@ export function EditorStateProvider({
   const [snapEnabled, setSnapEnabled] = React.useState(true);
   const [unit, setUnit] = React.useState<MeasurementUnit>("in");
 
-  const notify = onDesignChange;
-
   /* Every object URL the session handed out goes back when the editor does. */
   React.useEffect(() => releaseImageCache, []);
-
-  const canvas: CanvasInteraction = {
-    ...base,
-    placeAsset: (asset, at) => {
-      base.placeAsset(asset, at);
-      notify?.();
-    },
-    addText: () => {
-      base.addText();
-      notify?.();
-    },
-    renameObject: (id: string, name: string) => {
-      base.renameObject(id, name);
-      notify?.();
-    },
-    addMockArtwork: () => {
-      base.addMockArtwork();
-      notify?.();
-    },
-    duplicateSelection: () => {
-      base.duplicateSelection();
-      notify?.();
-    },
-    autofillSelection: (offsets: Array<{ x: number; y: number }>) => {
-      base.autofillSelection(offsets);
-      notify?.();
-    },
-    deleteSelection: () => {
-      base.deleteSelection();
-      notify?.();
-    },
-    rotateSelection: (degrees: number) => {
-      base.rotateSelection(degrees);
-      notify?.();
-    },
-    toggleLockSelection: () => {
-      base.toggleLockSelection();
-      notify?.();
-    },
-    setSelectionOpacity: (opacity: number) => {
-      base.setSelectionOpacity(opacity);
-      notify?.();
-    },
-    patchSelection: (patch: CanvasObjectPatch) => {
-      base.patchSelection(patch);
-      notify?.();
-    },
-    patchObject: (id: string, patch: CanvasObjectPatch) => {
-      base.patchObject(id, patch);
-      notify?.();
-    },
-    patchObjects: (updates) => {
-      base.patchObjects(updates);
-      notify?.();
-    },
-    setObjectHidden: (id: string, hidden: boolean) => {
-      base.setObjectHidden(id, hidden);
-      notify?.();
-    },
-    deleteObject: (id: string) => {
-      base.deleteObject(id);
-      notify?.();
-    },
-    setObjectOrder: (ids: string[]) => {
-      base.setObjectOrder(ids);
-      notify?.();
-    },
-    moveObjectToEdge: (id: string, edge: "front" | "back") => {
-      base.moveObjectToEdge(id, edge);
-      notify?.();
-    },
-    stepObjectOrder: (id: string, delta: number) => {
-      base.stepObjectOrder(id, delta);
-      notify?.();
-    },
-    setSheetSize: (value: string) => {
-      base.setSheetSize(value);
-      notify?.();
-    },
-    // Stepping through history changes the design as much as any edit does.
-    undo: () => {
-      base.undo();
-      notify?.();
-    },
-    redo: () => {
-      base.redo();
-      notify?.();
-    },
-  };
 
   const settings: WorkspaceSettings = {
     // Backed by the document reducer rather than local state, so resizing the
@@ -308,8 +228,8 @@ export function EditorStateProvider({
    * and it has no business running because someone clicked a layer.
    */
   const preflight = React.useMemo(
-    () => runPreflight(base.objects, base.sheetSize, library.assets),
-    [base.objects, base.sheetSize, library.assets],
+    () => runPreflight(canvas.objects, canvas.sheetSize, library.assets),
+    [canvas.objects, canvas.sheetSize, library.assets],
   );
 
   const placeAsset = (asset: Asset, at?: PlacementPoint) => {
@@ -324,6 +244,35 @@ export function EditorStateProvider({
     placeAsset(asset, at);
   };
 
+  const [savedDesignId, setSavedDesignId] = React.useState<string | null>(
+    null,
+  );
+
+  /**
+   * What the linked saved design holds: the version on screen when it was
+   * last saved, or opened. `"restoring"` while a design that matches its
+   * saved entry is being applied, whose pieces only take their new identities
+   * in the render it lands in.
+   */
+  const [savedVersion, setSavedVersion] = React.useState<
+    DesignVersion | "restoring" | null
+  >(null);
+
+  const version = React.useMemo<DesignVersion>(
+    () => ({ document: canvas.document, assets: library.assets, name: designName }),
+    [canvas.document, library.assets, designName],
+  );
+
+  // Adopted during the render the restored design lands in, rather than in an
+  // effect after it, so the header never reads it as unsaved for a frame.
+  if (savedVersion === "restoring") setSavedVersion(version);
+
+  const matchesSavedDesign =
+    savedDesignId !== null &&
+    savedVersion !== null &&
+    savedVersion !== "restoring" &&
+    sameVersion(savedVersion, version);
+
   /**
    * Apply a whole design at once.
    *
@@ -331,20 +280,33 @@ export function EditorStateProvider({
    * document arriving before its library would render a sheet of placeholders
    * until the next pass.
    */
-  const [savedDesignId, setSavedDesignId] = React.useState<string | null>(
-    null,
-  );
-
   const { restoreAssets } = library;
-  const { replaceDocument } = base;
+  const { replaceDocument } = canvas;
   const restoreDesign = React.useCallback(
     (design: RestoredDesign) => {
       restoreAssets(design.assets);
       replaceDocument(design.document);
       onDesignNameChange(design.name);
       setSavedDesignId(design.savedDesignId);
+      setSavedVersion(
+        design.savedDesignId && design.matchesSavedDesign ? "restoring" : null,
+      );
     },
     [restoreAssets, replaceDocument, onDesignNameChange],
+  );
+
+  const linkSavedDesign = React.useCallback(
+    (id: string, held: DesignVersion) => {
+      setSavedDesignId(id);
+      setSavedVersion(held);
+    },
+    [],
+  );
+
+  const unlinkSavedDesign = React.useCallback(
+    (id: string) =>
+      setSavedDesignId((current) => (current === id ? null : current)),
+    [],
   );
 
   const snapshotDesign = (): SerializedDesign => {
@@ -355,7 +317,7 @@ export function EditorStateProvider({
     }
     return serializeDocument({
       name: designName,
-      document: base.document,
+      document: canvas.document,
       assets: library.assets,
       files,
       savedAt: new Date().toISOString(),
@@ -370,7 +332,7 @@ export function EditorStateProvider({
    * or a sheet emptying itself on sign-out would read as work lost.
    */
   const resetDesign = () => {
-    const hadWork = base.objects.length > 0 || library.assets.length > 0;
+    const hadWork = canvas.objects.length > 0 || library.assets.length > 0;
     restoreDesign(emptyDesign());
     if (hadWork) {
       toast.success(
@@ -388,20 +350,20 @@ export function EditorStateProvider({
   const { user } = useAccount();
   const recovery = useDraftRecovery({
     scope: { accountId: user?.id ?? null, productId: getSheetProduct().id },
-    document: base.document,
+    document: canvas.document,
     assets: library.assets,
     name: designName,
     savedDesignId,
+    matchesSavedDesign,
     onRestore: restoreDesign,
     onReset: resetDesign,
-    onSaved: onDraftSaved,
   });
 
   /**
    * Publish the design for the storefront build.
    *
-   * Save lives above this provider and the commerce adapter is not a component
-   * at all, so neither can call `snapshotDesign` through context. Re-published
+   * The commerce adapter is not a component at all, so it cannot call
+   * `snapshotDesign` through context. Re-published
    * on every render because the closure it captures goes stale otherwise, and
    * withdrawn on unmount so nothing holds a dead editor.
    */
@@ -435,7 +397,10 @@ export function EditorStateProvider({
         recovery,
         restoreDesign,
         savedDesignId,
-        setSavedDesignId,
+        matchesSavedDesign,
+        version,
+        linkSavedDesign,
+        unlinkSavedDesign,
         snapshotDesign,
       }}
     >

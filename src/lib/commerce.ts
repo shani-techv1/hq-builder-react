@@ -1,10 +1,10 @@
 /**
  * Commerce boundary.
  *
- * Standalone, the editor has nowhere to send a sheet: Save is the local draft
- * and there is no cart. Embedded in a storefront, `src/embed.tsx` registers an
- * adapter that persists the design through the Shopify app proxy and hands the
- * resulting line items to the shop's own cart.
+ * Standalone, the editor has no cart. Embedded in a storefront, `src/embed.tsx`
+ * registers an adapter that persists the design through the Shopify app proxy
+ * and hands the resulting line items to the shop's own cart. Saving a design to
+ * come back to is My designs' job in both, and never goes through here.
  *
  * Unlike the sibling designer-lab editor, state here lives in React context
  * rather than a module-level store, so the adapter is *given* the design it is
@@ -25,8 +25,6 @@ export interface DesignPayload {
 }
 
 export interface CommerceAdapter {
-  /** Persist the sheet server-side. */
-  saveDesign: (payload: DesignPayload) => Promise<CommerceResult>;
   /**
    * Persist, resolve the sheet size to a variant, add it to the cart.
    *
@@ -58,10 +56,10 @@ export const isEmbedded = (): boolean => adapter !== null;
 /**
  * How a caller reaches the design without holding editor context.
  *
- * The document lives in a React provider, but Save sits above it in the tree
- * and the adapter isn't a component at all. Rather than thread the snapshot
- * through both, the provider publishes it here once and the two read it back —
- * the same shape the sibling editor gets for free from its module-level store.
+ * The document lives in a React provider, and the adapter isn't a component at
+ * all. Rather than thread the snapshot through to it, the provider publishes it
+ * here once and the cart reads it back — the same shape the sibling editor gets
+ * for free from its module-level store.
  *
  * Rendering the preview is the caller's job, because it needs a DOM canvas and
  * this module has to stay callable from anywhere.

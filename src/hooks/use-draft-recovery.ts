@@ -65,18 +65,12 @@ export interface UseDraftRecoveryOptions {
   name: string;
   /** The saved design on screen, if it is one — kept with the draft. */
   savedDesignId: string | null;
+  /** Whether that saved design holds what is on screen — kept with it too. */
+  matchesSavedDesign: boolean;
   /** Applies a restored design — from the draft, or from an imported file. */
   onRestore: (design: RestoredDesign) => void;
   /** Empties the editor, for when the account whose design it holds leaves. */
   onReset: () => void;
-  /**
-   * Called once a write has landed, so the header can confirm it.
-   *
-   * Optional because the draft only speaks for the whole design where there is
-   * nowhere else for it to go; embedded in a storefront the save indicator has
-   * to keep following the request to the shop instead.
-   */
-  onSaved?: () => void;
 }
 
 /** What is on screen, in the parts a draft is written from. */
@@ -85,19 +79,18 @@ interface Snapshot {
   assets: Asset[];
   name: string;
   savedDesignId: string | null;
+  matchesSavedDesign: boolean;
 }
 
 /**
  * Write what is on screen under `key`.
  *
  * An empty sheet is not a draft. Clearing rather than storing it is what stops
- * the recovery dialog appearing after the user tidies up — and it still counts
- * as a save: with the record gone, what is stored and what is on screen agree,
- * which is all the indicator claims.
+ * the recovery dialog appearing after the user tidies up.
  */
 function persist(
   key: string,
-  { document, assets, name, savedDesignId }: Snapshot,
+  { document, assets, name, savedDesignId, matchesSavedDesign }: Snapshot,
 ): Promise<boolean> {
   if (document.objects.length === 0 && assets.length === 0) {
     return clearDraft(key).then(() => true);
@@ -118,6 +111,7 @@ function persist(
       files,
       savedAt: new Date().toISOString(),
       savedDesignId,
+      matchesSavedDesign,
     }),
   );
 }
@@ -153,9 +147,9 @@ export function useDraftRecovery({
   assets,
   name,
   savedDesignId,
+  matchesSavedDesign,
   onRestore,
   onReset,
-  onSaved,
 }: UseDraftRecoveryOptions): DraftRecovery {
   const key = draftKey(scope);
   const isAccount = scope.accountId !== null;
@@ -196,9 +190,9 @@ export function useDraftRecovery({
     assets,
     name,
     savedDesignId,
+    matchesSavedDesign,
     onRestore,
     onReset,
-    onSaved,
     /** The scope autosave was writing to, or `null` while it was paused. */
     readyKey: null as string | null,
     current,
@@ -267,9 +261,9 @@ export function useDraftRecovery({
       assets,
       name,
       savedDesignId,
+      matchesSavedDesign,
       onRestore,
       onReset,
-      onSaved,
       readyKey: status === "ready" ? key : null,
       current,
     };
@@ -301,16 +295,16 @@ export function useDraftRecovery({
     /**
      * Set once a later edit has superseded this write.
      *
-     * IndexedDB resolves on its own schedule, so without this a slow put could
-     * report success after the design had moved on — and the header would read
-     * "Saved" over changes still held only in memory.
+     * IndexedDB resolves on its own schedule, so a slow put can land after the
+     * design has moved on. Only the latest write clears the carried guest copy,
+     * once the account holds what is on screen.
      */
     let superseded = false;
 
     const timer = setTimeout(() => {
-      void persist(key, { document, assets, name, savedDesignId }).then((stored) => {
+      const snapshot = { document, assets, name, savedDesignId, matchesSavedDesign };
+      void persist(key, snapshot).then((stored) => {
         if (!stored || superseded) return;
-        latest.current.onSaved?.();
 
         const carried = carriedFrom.current;
         if (carried) {
@@ -324,7 +318,7 @@ export function useDraftRecovery({
       superseded = true;
       clearTimeout(timer);
     };
-  }, [status, key, document, assets, name, savedDesignId]);
+  }, [status, key, document, assets, name, savedDesignId, matchesSavedDesign]);
 
   return {
     status,

@@ -1,10 +1,7 @@
 "use client";
 
-import { Save } from "lucide-react";
-
 import { AppLogo } from "@/components/common/app-logo";
 import { DesignName } from "@/components/header/design-name";
-import { HeaderButton } from "@/components/header/header-button";
 import { SaveStatus } from "@/components/header/save-status";
 import { Separator } from "@/components/ui/separator";
 import type { SaveState } from "@/lib/workspace";
@@ -13,8 +10,7 @@ export interface EditorHeaderProps {
   designName: string;
   onDesignNameChange: (name: string) => void;
   saveStatus: SaveState;
-  onSave: () => void;
-  /** Controls that need the editor's state, rendered before Save. */
+  /** Controls that need the editor's state, saving last. */
   actions?: React.ReactNode;
 }
 
@@ -34,7 +30,6 @@ export function EditorHeader({
   designName,
   onDesignNameChange,
   saveStatus,
-  onSave,
   actions,
 }: EditorHeaderProps) {
   return (
@@ -52,15 +47,6 @@ export function EditorHeader({
       </div>
 
       {actions}
-
-      <HeaderButton
-        icon={Save}
-        label="Save"
-        variant="outline"
-        onClick={onSave}
-        disabled={saveStatus === "saving"}
-        labelClassName="hidden sm:inline"
-      />
     </header>
   );
 }

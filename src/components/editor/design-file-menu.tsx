@@ -117,6 +117,9 @@ export function DesignFileMenu() {
               icon={FolderInput}
               label="Design file"
               variant="ghost"
+              // The header's least-used control, so the first to give its
+              // words up to the save buttons and the cart.
+              labelClassName="hidden xl:inline"
             />
           }
         />

@@ -7,7 +7,6 @@ import {
   LayoutGrid,
   LoaderCircle,
   LogIn,
-  Save,
   Trash2,
   TriangleAlert,
   X,
@@ -259,54 +258,10 @@ function SavedDesignsPanel({
     );
   }
 
-  const saving = saved.busy?.kind === "save";
-  const disabled = saved.busy !== null || !saved.hasWork;
-
+  // Saving lives in the header, beside the cart; this is the list to open from.
   return (
-    <div className="flex max-h-[min(30rem,70dvh)] flex-col">
-      <div className="border-b border-border p-3">
-        {saved.currentId ? (
-          <div className="flex gap-2">
-            <PrimaryButton
-              size="md"
-              onClick={() => void saved.save({ asNew: false })}
-              disabled={disabled}
-            >
-              {saving ? "Saving…" : "Save changes"}
-            </PrimaryButton>
-            <PrimaryButton
-              size="md"
-              variant="outline"
-              onClick={() => void saved.save({ asNew: true })}
-              disabled={disabled}
-            >
-              Save as new
-            </PrimaryButton>
-          </div>
-        ) : (
-          <PrimaryButton
-            icon={Save}
-            size="md"
-            onClick={() => void saved.save({ asNew: true })}
-            disabled={disabled}
-          >
-            {saving ? "Saving…" : "Save current design"}
-          </PrimaryButton>
-        )}
-        {!saved.hasWork ? (
-          <p className="mt-2 text-[11.5px] text-muted-foreground">
-            Add artwork to the sheet to save it.
-          </p>
-        ) : null}
-      </div>
-
-      <p className="px-3 pb-1 pt-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        Saved designs
-      </p>
-
-      <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5">
-        <SavedDesignsList saved={saved} onChoose={onChoose} onDelete={onDelete} />
-      </div>
+    <div className="max-h-[min(30rem,70dvh)] overflow-y-auto p-1.5">
+      <SavedDesignsList saved={saved} onChoose={onChoose} onDelete={onDelete} />
     </div>
   );
 }

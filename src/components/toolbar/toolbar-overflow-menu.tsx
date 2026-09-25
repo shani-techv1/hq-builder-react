@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import {
+  CopyPlus,
   Download,
   FolderOpen,
   Grid2x2,
@@ -27,6 +28,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useSavedDesigns } from "@/hooks/use-saved-designs";
 import { MAX_ZOOM, MIN_ZOOM, zoomIn, zoomOut } from "@/lib/workspace";
 
 export interface ToolbarOverflowMenuProps {
@@ -48,9 +50,9 @@ export interface ToolbarOverflowMenuProps {
  * fitted to the screen. What stays in the row is what gets pressed while
  * working: history, text, the background preview and the sheet size.
  *
- * My designs and the design file's export and import land here too, from the
- * header: on a phone the storefront's cart buttons need the room, and this is
- * the one menu a phone always has.
+ * My designs, Save as new and the design file's export and import land here
+ * too, from the header: on a phone the storefront's cart buttons need the
+ * room, and this is the one menu a phone always has.
  *
  * The zoom steps keep the menu open, so stepping in three times is three taps
  * rather than three trips back to this button; the readout in the group's
@@ -71,6 +73,7 @@ export function ToolbarOverflowMenu({
     if (error) toast.error(error);
   });
   const [designsOpen, setDesignsOpen] = React.useState(false);
+  const saved = useSavedDesigns();
 
   return (
     <>
@@ -140,6 +143,18 @@ export function ToolbarOverflowMenu({
             <FolderOpen aria-hidden />
             My designs
           </DropdownMenuItem>
+          {/* Only once there is a saved design to copy; before that, the
+              header's Save already makes a new one. */}
+          {saved.access === "ready" && saved.currentId ? (
+            <DropdownMenuItem
+              onClick={() => void saved.save({ asNew: true })}
+              disabled={saved.busy !== null}
+              className="py-1.5"
+            >
+              <CopyPlus aria-hidden />
+              Save as new
+            </DropdownMenuItem>
+          ) : null}
 
           <DropdownMenuSeparator />
 

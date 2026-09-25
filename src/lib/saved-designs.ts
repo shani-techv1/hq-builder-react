@@ -249,6 +249,7 @@ export async function openSavedDesign(id: string): Promise<RestoredDesign> {
   return {
     ...design,
     savedDesignId: id,
+    matchesSavedDesign: true,
     assets: design.assets.map((asset) => ({
       ...asset,
       hostedUrl: hosted.get(asset.id),

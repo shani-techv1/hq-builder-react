@@ -6,6 +6,7 @@ import { useEditorState } from "@/components/editor/editor-state";
 import { toast } from "@/components/ui/toast";
 import { useAccount } from "@/hooks/use-account";
 import { AuthError } from "@/lib/auth";
+import { summarisePreflight } from "@/lib/preflight";
 import {
   deleteSavedDesign,
   listSavedDesigns,
@@ -57,6 +58,28 @@ const messageOf = (cause: unknown): string =>
 const isMissing = (cause: unknown) =>
   cause instanceof AuthError && cause.code === "NOT_FOUND";
 
+const SavedDesignsContext = React.createContext<SavedDesigns | null>(null);
+
+/**
+ * One set of saved designs for the whole editor.
+ *
+ * The header's save buttons, My designs and the phone's More menu all act on
+ * the same list and the same operation in flight. Separate copies could save
+ * and open at once, each believing it had the sheet to itself.
+ */
+export function SavedDesignsProvider({ children }: { children: React.ReactNode }) {
+  const value = useSavedDesignsState();
+  return React.createElement(SavedDesignsContext.Provider, { value }, children);
+}
+
+export function useSavedDesigns(): SavedDesigns {
+  const context = React.useContext(SavedDesignsContext);
+  if (!context) {
+    throw new Error("useSavedDesigns must be used inside a SavedDesignsProvider");
+  }
+  return context;
+}
+
 /**
  * The signed-in account's saved designs for this product, and what can be
  * done with them.
@@ -69,15 +92,18 @@ const isMissing = (cause: unknown) =>
  * Failures are reported here, as toasts, because the menu that started them has
  * usually closed by the time they arrive.
  */
-export function useSavedDesigns(): SavedDesigns {
+function useSavedDesignsState(): SavedDesigns {
   const { user, isAuthorized } = useAccount();
   const {
     canvas,
     library,
+    preflight,
     snapshotDesign,
     restoreDesign,
     savedDesignId,
-    setSavedDesignId,
+    version,
+    linkSavedDesign,
+    unlinkSavedDesign,
   } = useEditorState();
 
   const owner = user?.id ?? null;
@@ -159,9 +185,28 @@ export function useSavedDesigns(): SavedDesigns {
 
   const save = ({ asNew }: { asNew: boolean }) =>
     run({ kind: "save" }, async () => {
-      if (!hasWork) return false;
+      if (!hasWork) {
+        toast.warning("Nothing to save yet", "Add artwork to the sheet to save it.");
+        return false;
+      }
+
+      // Warned as the save starts rather than after it lands, because it is
+      // about the artwork and not about whether the save worked — and it never
+      // stands in the way of one: an overlap can be the design, and artwork
+      // under 300 DPI can still be fine for the job.
+      const summary = summarisePreflight(preflight);
+      if (summary) {
+        toast.warning(
+          "Check this sheet before printing",
+          `${summary}. Open Checks to review.`,
+        );
+      }
+
       const startedAs = owner;
       const linked = asNew ? null : savedDesignId;
+      // What this save holds. Edits made while it uploads come after it, and
+      // leave the sheet unsaved once it lands.
+      const held = version;
 
       try {
         const saved = await saveDesignToAccount({
@@ -171,7 +216,7 @@ export function useSavedDesigns(): SavedDesigns {
         });
         if (currentOwner.current !== startedAs) return false;
 
-        setSavedDesignId(saved.id);
+        linkSavedDesign(saved.id, held);
         updateList((rows) => [saved, ...rows.filter((row) => row.id !== saved.id)]);
 
         if (linked && saved.id !== linked) {
@@ -221,7 +266,7 @@ export function useSavedDesigns(): SavedDesigns {
         updateList((rows) => rows.filter((row) => row.id !== design.id));
         // The sheet stays; it just isn't that saved design any more, so the
         // next save makes a new one rather than failing to find this.
-        setSavedDesignId((current) => (current === design.id ? null : current));
+        unlinkSavedDesign(design.id);
         toast.success("Design deleted", `“${design.name}” was removed from My designs.`);
         return true;
       } catch (cause) {
