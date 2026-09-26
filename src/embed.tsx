@@ -15,7 +15,11 @@ import {
   type SheetBootstrap,
 } from "@/lib/shopify";
 import { collectSheetPieces } from "@/lib/sheet-pieces";
-import { setSheetProduct, setSheetSizes } from "@/lib/workspace";
+import {
+  setPreferredSheetSize,
+  setSheetProduct,
+  setSheetSizes,
+} from "@/lib/workspace";
 
 /**
  * Storefront entry point.
@@ -191,6 +195,12 @@ function boot() {
   // and the product decides which saved draft is this page's.
   setSheetProduct({ id: bootstrap.product.id, name: bootstrap.product.name });
   setSheetSizes(toSheetSizes(bootstrap.sheetSizes));
+  // The variant chosen on the product page is where a new sheet starts.
+  setPreferredSheetSize(
+    bootstrap.sheetSizes.find(
+      (size) => size.variantId === bootstrap.initialVariantId,
+    )?.id ?? null,
+  );
   setCommerceAdapter(createAdapter(bootstrap));
 
   container.innerHTML = "";

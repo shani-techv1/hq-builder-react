@@ -31,6 +31,7 @@ export interface SheetBootstrap {
   };
   /** The sizes this product actually sells, one variant each. */
   sheetSizes: SheetVariant[];
+  /** The variant chosen on the product page, which a new sheet opens at. */
   initialVariantId: string | null;
   endpoints: { designs: string; cartAdd: string };
 }

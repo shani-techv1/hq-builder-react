@@ -43,16 +43,37 @@ export function setSheetSizes(next: SheetSize[]): void {
  */
 export const SHEET_SIZES = BUILT_IN_SHEET_SIZES;
 
+/** The size the storefront opened the editor for, if it named one. */
+let preferredSheetSize: string | null = null;
+
+/**
+ * Open new sheets at `id` — in the storefront, the size of the variant the
+ * shopper had chosen on the product page. Called once by the storefront entry
+ * before anything renders, like {@link setSheetSizes}.
+ */
+export function setPreferredSheetSize(id: string | null): void {
+  preferredSheetSize = id;
+}
+
 /**
  * The size a new sheet opens at.
  *
- * The standard gang sheet whenever it is on offer — it is the common case, and
- * the presets are ordered small-to-large rather than by likelihood. Falls back
- * to the first available size for a merchant whose list doesn't include it.
+ * The one the shopper chose on the product page, when the storefront says so:
+ * they picked a sheet before they opened the builder, and the builder should
+ * agree with them. Otherwise the standard gang sheet whenever it is on offer —
+ * it is the common case, and the presets are ordered small-to-large rather
+ * than by likelihood — and failing that the first size there is.
+ *
+ * Only a new sheet: a draft or a saved design brings its own size, because
+ * that is work the shopper did rather than a starting point.
  */
 export const defaultSheetSize = (): string => {
   const sizes = getSheetSizes();
-  return sizes.some((size) => size.id === DEFAULT_SHEET_SIZE)
+  const offered = (id: string | null): id is string =>
+    id !== null && sizes.some((size) => size.id === id);
+
+  if (offered(preferredSheetSize)) return preferredSheetSize;
+  return offered(DEFAULT_SHEET_SIZE)
     ? DEFAULT_SHEET_SIZE
     : (sizes[0]?.id ?? DEFAULT_SHEET_SIZE);
 };
