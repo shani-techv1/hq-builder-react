@@ -13,7 +13,7 @@
  * rather than casting, and returns `null` for anything it cannot vouch for.
  */
 
-import type { Asset, AssetFormat } from "@/lib/assets";
+import type { AccountAssetLink, Asset, AssetFormat } from "@/lib/assets";
 import {
   DEFAULT_TYPOGRAPHY,
   type CanvasAdjustments,
@@ -58,6 +58,11 @@ export interface SerializedAsset {
   transparent: boolean;
   thumbnail: string;
   file: Blob | string;
+  /**
+   * The account's record of the graphic, so reopening the design doesn't list
+   * it twice beside the account's own copy.
+   */
+  accountAsset?: AccountAssetLink;
 }
 
 export interface SerializedDesign {
@@ -141,6 +146,22 @@ export interface SerializeInput {
 }
 
 /**
+ * The library entries a design carries: everything on the sheet, and every
+ * upload not yet kept on the account.
+ *
+ * An account's graphic that isn't placed stays out. It is the account's, not
+ * this design's, and comes back with the account's library wherever it is
+ * opened — carrying it would copy the whole library into every design.
+ */
+export function assetsForDesign(
+  assets: Asset[],
+  objects: CanvasObject[],
+): Asset[] {
+  const placed = new Set(objects.map((object) => object.assetId));
+  return assets.filter((asset) => !asset.accountAsset || placed.has(asset.id));
+}
+
+/**
  * Build the portable record for a design.
  *
  * Assets whose bytes are missing are dropped rather than written out half
@@ -167,6 +188,7 @@ export function serializeDocument(input: SerializeInput): SerializedDesign {
       transparent: asset.transparent,
       thumbnail: asset.thumbnail,
       file,
+      ...(asset.accountAsset ? { accountAsset: asset.accountAsset } : {}),
     });
   }
 
@@ -316,8 +338,11 @@ function readObject(value: unknown): CanvasObject | null {
   };
 }
 
-/** Decode a data URL into a Blob, for assets arriving from exported JSON. */
-function blobFromDataUrl(dataUrl: string, mimeType: string): Blob | null {
+/**
+ * Decode a data URL into a Blob, for assets arriving from exported JSON — and
+ * for a thumbnail on its way to the image host.
+ */
+export function blobFromDataUrl(dataUrl: string, mimeType: string): Blob | null {
   const comma = dataUrl.indexOf(",");
   if (!dataUrl.startsWith("data:") || comma < 0) return null;
 
@@ -337,6 +362,15 @@ function blobFromDataUrl(dataUrl: string, mimeType: string): Blob | null {
     // Truncated or otherwise malformed base64.
     return null;
   }
+}
+
+/** A link to the account's record, if it is a well-formed one. */
+function readAccountAsset(value: unknown): AccountAssetLink | undefined {
+  if (!isRecord(value)) return undefined;
+  const id = optStr(value.id);
+  const url = optStr(value.url);
+  if (!id || id.length > 64 || !url || !/^https?:\/\//i.test(url)) return undefined;
+  return { id, url };
 }
 
 function readAsset(value: unknown): RestoredAsset | null {
@@ -373,6 +407,7 @@ function readAsset(value: unknown): RestoredAsset | null {
     transparent: bool(value.transparent, false),
     thumbnail: str(value.thumbnail, ""),
     file,
+    accountAsset: readAccountAsset(value.accountAsset),
   };
 }
 
@@ -481,12 +516,20 @@ export async function designToJson(design: SerializedDesign): Promise<string> {
  * Parse an exported file. `null` for anything that isn't one.
  *
  * Never linked to a saved design, even if the file names one: an import is a
- * new copy, and saving it must not overwrite whatever that id points at.
+ * new copy, and saving it must not overwrite whatever that id points at. Its
+ * artwork is new to this account for the same reason, whoever exported it.
  */
 export function designFromJson(text: string): RestoredDesign | null {
   try {
     const design = deserializeDocument(JSON.parse(text));
-    return design && { ...design, savedDesignId: null, matchesSavedDesign: false };
+    return (
+      design && {
+        ...design,
+        savedDesignId: null,
+        matchesSavedDesign: false,
+        assets: design.assets.map((asset) => ({ ...asset, accountAsset: undefined })),
+      }
+    );
   } catch {
     // Not JSON at all.
     return null;

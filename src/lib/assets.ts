@@ -34,10 +34,26 @@ export interface Asset {
   /** How many times the asset has been placed on a sheet. */
   usageCount: number;
   transparent: boolean;
-  /** Data URL of the preview generated at upload time. */
+  /**
+   * The preview the library shows: a data URL generated at upload time, or the
+   * link to it on the image host for a graphic kept on the account.
+   */
   thumbnail: string;
-  /** Object URL of the uploaded file — what the canvas decodes and draws. */
+  /**
+   * Object URL of the uploaded file — what the canvas decodes and draws.
+   *
+   * Empty for an account's graphic until it is first placed: the library lists
+   * it from its thumbnail, and its file is fetched only when it is used.
+   */
   source: string;
+  /** The account's record of this graphic, once it is kept there. */
+  accountAsset?: AccountAssetLink;
+}
+
+/** Which of the account's graphics an asset is, and where its file lives. */
+export interface AccountAssetLink {
+  id: string;
+  url: string;
 }
 
 /** SVG scales without resolution loss; the raster formats do not. */

@@ -19,6 +19,7 @@ import {
   type RestoredDesign,
   type SerializedDesign,
 } from "@/lib/design-document";
+import { downloadArtwork } from "@/lib/image-service";
 import { hostedUrlFor } from "@/lib/sheet-pieces";
 
 /** One row of the list — enough to choose by, without the design itself. */
@@ -36,9 +37,6 @@ export interface SavedDesignSummary {
  * per artwork, and a phone on a poor connection sends that slowly.
  */
 const SAVE_TIMEOUT_MS = 60_000;
-
-/** The same allowance per file as filing artwork, since it is the same files. */
-const DOWNLOAD_TIMEOUT_MS = 120_000;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -158,48 +156,6 @@ export async function saveDesignToAccount({
       timeoutMs: SAVE_TIMEOUT_MS,
     }),
   );
-}
-
-/**
- * One asset's bytes, back off the image host.
- *
- * Typed by the saved record rather than by the response when the two differ:
- * the host names files by extension, and an asset renamed without one is
- * served as whatever it guessed — an SVG under the wrong type would not draw.
- */
-async function downloadArtwork(url: string, mimeType: unknown): Promise<Blob> {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    throw new Error("This design links to artwork that isn’t a valid address.");
-  }
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    throw new Error("This design links to artwork that isn’t a valid address.");
-  }
-
-  const response = await fetch(parsed, {
-    mode: "cors",
-    credentials: "omit",
-    referrerPolicy: "no-referrer",
-    signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
-  });
-  if (!response.ok) throw new Error("Some of this design’s artwork is missing.");
-
-  const bytes = await response.blob();
-  if (bytes.size === 0) throw new Error("Some of this design’s artwork is missing.");
-
-  const recorded =
-    typeof mimeType === "string" && mimeType.startsWith("image/")
-      ? mimeType
-      : null;
-  if (recorded && bytes.type !== recorded) {
-    return new Blob([bytes], { type: recorded });
-  }
-  if (!bytes.type.startsWith("image/")) {
-    throw new Error("Some of this design’s artwork isn’t an image.");
-  }
-  return bytes;
 }
 
 /**

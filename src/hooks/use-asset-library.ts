@@ -2,6 +2,11 @@
 
 import * as React from "react";
 
+import { toast } from "@/components/ui/toast";
+import {
+  assetFromRecord,
+  type AccountAssetRecord,
+} from "@/lib/account-assets";
 import {
   createAssetFromFile,
   formatOf,
@@ -9,7 +14,7 @@ import {
   validateUpload,
   type UploadRejection,
 } from "@/lib/asset-upload";
-import { queryAssets, type Asset } from "@/lib/assets";
+import { queryAssets, type AccountAssetLink, type Asset } from "@/lib/assets";
 import {
   createOwnedObjectUrl,
   getAssetFile,
@@ -19,7 +24,18 @@ import {
   setAssetHostedUrl,
 } from "@/lib/image-cache";
 import type { RestoredAsset } from "@/lib/design-document";
-import { hostArtwork, trimArtwork } from "@/lib/image-service";
+import { downloadArtwork, trimArtwork } from "@/lib/image-service";
+import { hostAssetFile } from "@/lib/sheet-pieces";
+
+/**
+ * Stamped into every id this page load mints.
+ *
+ * A counter alone restarts at one on every visit, while the assets of a
+ * restored draft or an opened design keep the ids they were given on an
+ * earlier one — so the next upload would take an id already on the sheet, and
+ * the artwork placed under it would turn into the new file.
+ */
+const SESSION = Date.now().toString(36);
 
 /**
  * File an asset's bytes on the image host, in the background.
@@ -37,10 +53,7 @@ import { hostArtwork, trimArtwork } from "@/lib/image-service";
  * too.
  */
 function fileOnHost(asset: Asset, file: Blob): void {
-  if (getAssetHostedUrl(asset.id)) return;
-  void hostArtwork(file, asset.name).then((url) => {
-    if (url) setAssetHostedUrl(asset.id, url);
-  });
+  void hostAssetFile(asset.id, file, asset.name);
 }
 
 /**
@@ -117,7 +130,7 @@ export interface AssetLibrary {
 
   toggleFavorite: (id: string) => void;
   renameAsset: (id: string, name: string) => void;
-  duplicateAsset: (id: string) => void;
+  duplicateAsset: (id: string) => Promise<void>;
   deleteAsset: (id: string) => void;
   /** Count a placement against the asset, for the library's "used in" figure. */
   countPlacement: (id: string) => void;
@@ -126,9 +139,36 @@ export interface AssetLibrary {
    *
    * Each asset arrives as bytes and gets a fresh object URL — the one it had
    * last session died with that page, so the ids are all that survive the trip.
+   *
+   * The account's graphics stay unless `keepAccountAssets` is false: opening a
+   * design doesn't change what the account has uploaded. Clearing the editor
+   * for the next person at this browser does.
    */
-  restoreAssets: (restored: RestoredAsset[]) => void;
+  restoreAssets: (
+    restored: RestoredAsset[],
+    options?: { keepAccountAssets?: boolean },
+  ) => void;
+
+  /**
+   * The asset with its file ready to draw, fetching it first for an account's
+   * graphic that hasn't been used yet. `null` if it couldn't be — the reason
+   * has been raised as a toast.
+   */
+  ensureLocal: (id: string) => Promise<Asset | null>;
+  /** Assets whose files are being fetched, for the grid to show as busy. */
+  downloading: string[];
+  /** Add the account's graphics that the library doesn't already hold. */
+  addAccountAssets: (records: AccountAssetRecord[]) => void;
+  /** Record that an upload is now kept on the account. */
+  linkAccountAsset: (id: string, link: AccountAssetLink) => void;
 }
+
+/**
+ * The URL an asset's file is served from, for telling two copies of the same
+ * artwork apart from two different ones.
+ */
+const hostedUrlOf = (asset: Asset) =>
+  asset.accountAsset?.url ?? getAssetHostedUrl(asset.id);
 
 /**
  * State for the asset library: what has been uploaded, what is uploading, and
@@ -145,10 +185,20 @@ export function useAssetLibrary(): AssetLibrary {
   const [previewId, setPreviewId] = React.useState<string | null>(null);
   const [uploads, setUploads] = React.useState<UploadTask[]>([]);
   const [rejections, setRejections] = React.useState<UploadRejection[]>([]);
+  const [downloading, setDownloading] = React.useState<string[]>([]);
 
-  /** Ids are per-session and never reused, so a counter is enough. */
+  /** Counted per page load, and made unique across loads by {@link SESSION}. */
   const uploadCount = React.useRef(0);
   const copyCount = React.useRef(0);
+
+  /** The library as of the latest render, for work that finishes after it. */
+  const latestAssets = React.useRef(assets);
+  React.useEffect(() => {
+    latestAssets.current = assets;
+  }, [assets]);
+
+  /** Files being fetched, by asset id, so asking twice fetches once. */
+  const fetching = React.useRef(new Map<string, Promise<Asset | null>>());
 
   const trackProgress = React.useCallback((id: string, progress: number) => {
     setUploads((current) =>
@@ -184,7 +234,7 @@ export function useAssetLibrary(): AssetLibrary {
         accepted.push({
           file,
           task: {
-            id: `upload-${uploadCount.current}`,
+            id: `upload-${SESSION}-${uploadCount.current}`,
             name: file.name,
             sizeBytes: file.size,
             progress: 0,
@@ -269,41 +319,96 @@ export function useAssetLibrary(): AssetLibrary {
     );
   }, []);
 
-  const duplicateAsset = React.useCallback((id: string) => {
-    copyCount.current += 1;
-    const suffix = copyCount.current;
-    setAssets((current) => {
-      const index = current.findIndex((asset) => asset.id === id);
-      if (index < 0) return current;
-      const source = current[index];
-      const copy: Asset = {
-        ...source,
-        id: `${source.id}-copy-${suffix}`,
-        name: copyName(source.name),
-        favorite: false,
-        usageCount: 0,
-      };
-      // The copy points at its source's file rather than decoding a second
-      // one — same bytes, same bitmap, one entry in the cache.
-      const file = getAssetFile(source.id);
-      if (file) {
-        registerAssetSource(copy.id, {
-          src: copy.source,
+  const ensureLocal = React.useCallback((id: string): Promise<Asset | null> => {
+    const asset = latestAssets.current.find((entry) => entry.id === id);
+    if (!asset) return Promise.resolve(null);
+    if (getAssetFile(id)) return Promise.resolve(asset);
+
+    const link = asset.accountAsset;
+    if (!link) return Promise.resolve(null);
+
+    const running = fetching.current.get(id);
+    if (running) return running;
+
+    setDownloading((current) => [...current, id]);
+    const task = downloadArtwork(link.url, asset.mimeType)
+      .then((file) => {
+        const source = createOwnedObjectUrl(file);
+        registerAssetSource(id, {
+          src: source,
           file,
-          width: copy.width,
-          height: copy.height,
+          width: asset.width,
+          height: asset.height,
+          // It came from the host, so it is never filed there a second time.
+          hostedUrl: link.url,
         });
-        // Same bytes, so the same hosted copy — uploading them a second time
-        // would put an identical file on the host under a new name.
-        const hosted = getAssetHostedUrl(source.id);
-        if (hosted) setAssetHostedUrl(copy.id, hosted);
-        else fileOnHost(copy, file);
-      }
-      // Next to its source rather than at the top — the copy is easier to find
-      // where the eye already is.
-      return [...current.slice(0, index + 1), copy, ...current.slice(index + 1)];
-    });
+        void loadImage(source);
+        setAssets((current) =>
+          current.map((entry) => (entry.id === id ? { ...entry, source } : entry)),
+        );
+        return { ...asset, source };
+      })
+      .catch((cause: unknown) => {
+        toast.error(
+          `Couldn’t load “${asset.name}”`,
+          cause instanceof Error && !(cause instanceof TypeError)
+            ? cause.message
+            : "Check your connection and try again.",
+        );
+        return null;
+      })
+      .finally(() => {
+        fetching.current.delete(id);
+        setDownloading((current) => current.filter((entry) => entry !== id));
+      });
+
+    fetching.current.set(id, task);
+    return task;
   }, []);
+
+  const duplicateAsset = React.useCallback(
+    async (id: string) => {
+      // A copy shares its source's file, so the file has to be here first.
+      if (!(await ensureLocal(id))) return;
+
+      copyCount.current += 1;
+      const suffix = `${SESSION}-${copyCount.current}`;
+      setAssets((current) => {
+        const index = current.findIndex((asset) => asset.id === id);
+        if (index < 0) return current;
+        const source = current[index];
+        const copy: Asset = {
+          ...source,
+          id: `${source.id}-copy-${suffix}`,
+          name: copyName(source.name),
+          favorite: false,
+          usageCount: 0,
+          // A graphic of its own, which the account keeps separately.
+          accountAsset: undefined,
+        };
+        // The copy points at its source's file rather than decoding a second
+        // one — same bytes, same bitmap, one entry in the cache.
+        const file = getAssetFile(source.id);
+        if (file) {
+          registerAssetSource(copy.id, {
+            src: copy.source,
+            file,
+            width: copy.width,
+            height: copy.height,
+          });
+          // Same bytes, so the same hosted copy — uploading them a second time
+          // would put an identical file on the host under a new name.
+          const hosted = getAssetHostedUrl(source.id);
+          if (hosted) setAssetHostedUrl(copy.id, hosted);
+          else fileOnHost(copy, file);
+        }
+        // Next to its source rather than at the top — the copy is easier to find
+        // where the eye already is.
+        return [...current.slice(0, index + 1), copy, ...current.slice(index + 1)];
+      });
+    },
+    [ensureLocal],
+  );
 
   /**
    * Remove an asset from the library.
@@ -325,33 +430,78 @@ export function useAssetLibrary(): AssetLibrary {
     );
   }, []);
 
-  const restoreAssets = React.useCallback((restored: RestoredAsset[]) => {
-    const rebuilt = restored.map(({ file, hostedUrl, ...asset }) => {
-      const source = createOwnedObjectUrl(file);
-      registerAssetSource(asset.id, {
-        src: source,
-        file,
-        width: asset.width,
-        height: asset.height,
-        hostedUrl,
+  const restoreAssets = React.useCallback(
+    (
+      restored: RestoredAsset[],
+      { keepAccountAssets = true }: { keepAccountAssets?: boolean } = {},
+    ) => {
+      const rebuilt = restored.map(({ file, hostedUrl, ...asset }) => {
+        const source = createOwnedObjectUrl(file);
+        registerAssetSource(asset.id, {
+          src: source,
+          file,
+          width: asset.width,
+          height: asset.height,
+          hostedUrl: hostedUrl ?? asset.accountAsset?.url,
+        });
+        // A draft can be days old and was never ordered, so its artwork has
+        // almost certainly never been filed. Start now, on the same terms. A
+        // saved design's artwork came from the host, and is skipped.
+        fileOnHost({ ...asset, source } as Asset, file);
+        // Nothing else will ask for these. An upload decodes on its way through
+        // the pipeline, but a restored asset arrives already described — without
+        // this the canvas would draw placeholders and never replace them.
+        void loadImage(source);
+        return { ...asset, source };
       });
-      // A draft can be days old and was never ordered, so its artwork has
-      // almost certainly never been filed. Start now, on the same terms. A
-      // saved design's artwork came from the host, and is skipped.
-      fileOnHost({ ...asset, source } as Asset, file);
-      // Nothing else will ask for these. An upload decodes on its way through
-      // the pipeline, but a restored asset arrives already described — without
-      // this the canvas would draw placeholders and never replace them.
-      void loadImage(source);
-      return { ...asset, source };
-    });
 
-    setAssets(rebuilt);
-    setPreviewId(null);
-    // Uploads from the abandoned session are not coming back.
-    setUploads([]);
-    setRejections([]);
-  }, []);
+      setAssets((current) => {
+        if (!keepAccountAssets) return rebuilt;
+        // The account's graphics stay, less any the design brought back itself.
+        const restoredIds = new Set(rebuilt.map((asset) => asset.accountAsset?.id));
+        const restoredUrls = new Set(rebuilt.map(hostedUrlOf));
+        const kept = current.filter(
+          (asset) =>
+            asset.accountAsset &&
+            !restoredIds.has(asset.accountAsset.id) &&
+            !restoredUrls.has(asset.accountAsset.url),
+        );
+        return [...rebuilt, ...kept];
+      });
+      setPreviewId(null);
+      // Uploads from the abandoned session are not coming back.
+      setUploads([]);
+      setRejections([]);
+    },
+    [],
+  );
+
+  const addAccountAssets = React.useCallback(
+    (records: AccountAssetRecord[]) =>
+      setAssets((current) => {
+        const linked = new Set(current.map((asset) => asset.accountAsset?.id));
+        // An upload with the same file is this graphic before it was linked —
+        // one saved in a design, say — and becomes it rather than a twin.
+        const unlinkedUrls = new Set(
+          current.filter((asset) => !asset.accountAsset).map(hostedUrlOf),
+        );
+        const added = records
+          .filter((record) => !linked.has(record.id) && !unlinkedUrls.has(record.url))
+          .map(assetFromRecord);
+        return added.length > 0 ? [...current, ...added] : current;
+      }),
+    [],
+  );
+
+  const linkAccountAsset = React.useCallback(
+    (id: string, link: AccountAssetLink) =>
+      setAssets((current) =>
+        current.map((asset) =>
+          asset.id === id ? { ...asset, accountAsset: link } : asset,
+        ),
+      ),
+    [],
+  );
 
   const visibleAssets = React.useMemo(
     () => queryAssets(assets, search),
@@ -385,5 +535,10 @@ export function useAssetLibrary(): AssetLibrary {
     deleteAsset,
     countPlacement,
     restoreAssets,
+
+    ensureLocal,
+    downloading,
+    addAccountAssets,
+    linkAccountAsset,
   };
 }

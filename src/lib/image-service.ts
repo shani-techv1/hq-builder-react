@@ -118,6 +118,52 @@ export async function hostArtwork(
   }
 }
 
+/** The same allowance per file as filing artwork, since it is the same files. */
+const DOWNLOAD_TIMEOUT_MS = 120_000;
+
+/**
+ * One asset's bytes, back off the image host — for a saved design, and for an
+ * account's graphic the first time it is placed.
+ *
+ * Typed by the saved record rather than by the response when the two differ:
+ * the host names files by extension, and an asset renamed without one is
+ * served as whatever it guessed — an SVG under the wrong type would not draw.
+ */
+export async function downloadArtwork(url: string, mimeType: unknown): Promise<Blob> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("This design links to artwork that isn’t a valid address.");
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("This design links to artwork that isn’t a valid address.");
+  }
+
+  const response = await fetch(parsed, {
+    mode: "cors",
+    credentials: "omit",
+    referrerPolicy: "no-referrer",
+    signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error("Some of this design’s artwork is missing.");
+
+  const bytes = await response.blob();
+  if (bytes.size === 0) throw new Error("Some of this design’s artwork is missing.");
+
+  const recorded =
+    typeof mimeType === "string" && mimeType.startsWith("image/")
+      ? mimeType
+      : null;
+  if (recorded && bytes.type !== recorded) {
+    return new Blob([bytes], { type: recorded });
+  }
+  if (!bytes.type.startsWith("image/")) {
+    throw new Error("Some of this design’s artwork isn’t an image.");
+  }
+  return bytes;
+}
+
 /**
  * Crop the empty margin off artwork, and get the result back as bytes.
  *

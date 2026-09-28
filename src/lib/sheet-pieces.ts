@@ -225,9 +225,38 @@ export async function hostedUrlFor(
   const blob = asset.file instanceof Blob ? asset.file : null;
   if (!blob) return null;
 
-  const url = await hostArtwork(blob, asset.name);
-  if (url) setAssetHostedUrl(asset.id, url);
-  return url;
+  return hostAssetFile(asset.id, blob, asset.name);
+}
+
+/** Uploads under way, by asset id, so everyone asking for one shares it. */
+const hosting = new Map<string, Promise<string | null>>();
+
+/**
+ * File an asset's bytes on the image host once, however many ask.
+ *
+ * The library starts this the moment artwork arrives, and a save, an order or
+ * the account's copy of the graphic can ask for the same URL before that has
+ * landed. Without sharing the upload each of them would put the same file on
+ * the host again under a new name.
+ */
+export function hostAssetFile(
+  assetId: string,
+  file: Blob,
+  name: string,
+): Promise<string | null> {
+  const known = getAssetHostedUrl(assetId);
+  if (known) return Promise.resolve(known);
+
+  const running = hosting.get(assetId);
+  if (running) return running;
+
+  const upload = hostArtwork(file, name).then((url) => {
+    hosting.delete(assetId);
+    if (url) setAssetHostedUrl(assetId, url);
+    return url;
+  });
+  hosting.set(assetId, upload);
+  return upload;
 }
 
 /**

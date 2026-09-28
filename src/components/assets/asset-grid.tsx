@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 
 export interface AssetGridProps {
   assets: Asset[];
+  /** Assets whose files are being fetched before they can be placed. */
+  busyIds?: string[];
   onOpen: (id: string) => void;
   onPlace: (id: string) => void;
   onRename: (id: string, name: string) => void;
@@ -26,6 +28,7 @@ export interface AssetGridProps {
  */
 export function AssetGrid({
   assets,
+  busyIds = [],
   onOpen,
   onPlace,
   onRename,
@@ -41,6 +44,7 @@ export function AssetGrid({
           <AssetCard
             key={asset.id}
             asset={asset}
+            busy={busyIds.includes(asset.id)}
             onOpen={() => onOpen(asset.id)}
             onPlace={() => onPlace(asset.id)}
             onRename={(name) => onRename(asset.id, name)}

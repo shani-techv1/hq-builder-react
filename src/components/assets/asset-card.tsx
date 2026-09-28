@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { Copy, Expand, MoreHorizontal, Star } from "lucide-react";
+import { Copy, Expand, LoaderCircle, MoreHorizontal, Star } from "lucide-react";
 
 import { AssetContextMenu } from "@/components/assets/asset-context-menu";
 import { InlineRenameInput } from "@/components/common/inline-rename-input";
@@ -25,6 +25,8 @@ const DOUBLE_CLICK_GRACE_MS = 250;
 
 export interface AssetCardProps {
   asset: Asset;
+  /** Its file is being fetched from the account, to be placed. */
+  busy?: boolean;
   onOpen: () => void;
   /** Put this asset on the sheet — a double-click, or a drop on the canvas. */
   onPlace: () => void;
@@ -49,6 +51,7 @@ export interface AssetCardProps {
  */
 export function AssetCard({
   asset,
+  busy = false,
   onOpen,
   onPlace,
   onRename,
@@ -133,8 +136,9 @@ export function AssetCard({
           onDragEnd={() => setIsHeld(false)}
           className="bg-checkerboard relative aspect-4/3 overflow-hidden"
         >
-          {/* A locally generated data URL, so there is nothing for the image
-              optimiser to fetch, size or cache.
+          {/* A locally generated data URL, or a small file on the image host
+              for an account's graphic — nothing for the image optimiser to
+              size. Lazy, because an account's library can run to hundreds.
 
               No `draggable={false}` either: browsers differ on whether an
               opted-out child still lets its draggable ancestor be the drag
@@ -143,6 +147,8 @@ export function AssetCard({
           <img
             src={asset.thumbnail}
             alt=""
+            loading="lazy"
+            decoding="async"
             className={cn(
               "absolute inset-0 size-full object-contain p-1.5",
               "transition-transform duration-300 group-hover/card:scale-[1.04]",
@@ -168,6 +174,20 @@ export function AssetCard({
               "outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50",
             )}
           />
+
+          {busy ? (
+            <span
+              role="status"
+              className="pointer-events-none absolute inset-0 z-10 grid place-items-center bg-card/60 backdrop-blur-[1px]"
+            >
+              <LoaderCircle
+                className="size-5 animate-spin text-primary"
+                strokeWidth={2.4}
+                aria-hidden
+              />
+              <span className="sr-only">Loading {asset.name}</span>
+            </span>
+          ) : null}
 
           <span className="pointer-events-none absolute left-1.5 top-1.5 flex items-center gap-1">
             <span className="rounded-md bg-card/90 px-1.5 py-0.5 text-[9.5px] font-bold tracking-wide text-foreground shadow-soft backdrop-blur-sm">

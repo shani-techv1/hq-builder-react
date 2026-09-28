@@ -8,7 +8,11 @@ import {
   useCanvasInteraction,
   type CanvasInteraction,
 } from "@/hooks/use-canvas-interaction";
-import { useAssetLibrary, type AssetLibrary } from "@/hooks/use-asset-library";
+import {
+  useAccountLibrary,
+  type AccountLibrary,
+} from "@/hooks/use-account-library";
+import { useAssetLibrary } from "@/hooks/use-asset-library";
 import {
   useDraftRecovery,
   type DraftRecovery,
@@ -22,6 +26,7 @@ import {
 import type { PlacementPoint } from "@/lib/canvas-objects";
 import type { Asset } from "@/lib/assets";
 import {
+  assetsForDesign,
   emptyDesign,
   serializeDocument,
   type DesignDocument,
@@ -67,9 +72,13 @@ export interface WorkspaceSettings {
 /**
  * The design on screen at one moment, by identity.
  *
- * Every edit replaces at least one of the three — the fact autosave keys off —
- * so two versions holding the same three are the same design, and selecting,
- * zooming or panning never makes a new one.
+ * Every edit replaces the document, the name or one of the design's assets —
+ * the fact autosave keys off — so two versions holding the same ones are the
+ * same design, and selecting, zooming or panning never makes a new one.
+ *
+ * `assets` is only what the design carries (see `assetsForDesign`), so the
+ * account's library loading, or a graphic that isn't on the sheet being
+ * renamed, doesn't make the design read as changed.
  */
 export interface DesignVersion {
   document: DesignDocument;
@@ -78,19 +87,23 @@ export interface DesignVersion {
 }
 
 const sameVersion = (a: DesignVersion, b: DesignVersion) =>
-  a.document === b.document && a.assets === b.assets && a.name === b.name;
+  a.document === b.document &&
+  a.name === b.name &&
+  a.assets.length === b.assets.length &&
+  a.assets.every((asset, index) => asset === b.assets[index]);
 
 export interface EditorState {
   canvas: CanvasInteraction;
   settings: WorkspaceSettings;
   /**
-   * The uploaded artwork available to this editor.
+   * The uploaded artwork available to this editor — the session's uploads,
+   * and the account's graphics when someone is signed in.
    *
    * Owned here rather than by the Graphics panel because the library outlives
    * it: the panel unmounts every time it is closed, and the canvas has to keep
    * resolving the assets it has placed.
    */
-  library: AssetLibrary;
+  library: AccountLibrary;
   /** Look up an asset by id — how a placement reaches its file's metadata. */
   findAsset: (id: string | undefined) => Asset | undefined;
   /**
@@ -117,6 +130,9 @@ export interface EditorState {
    * just uploaded must pass the asset itself, because `uploadFiles` resolves in
    * the same tick as the state update that adds its assets, so the library this
    * looks in is still the one from before the upload.
+   *
+   * An account's graphic that hasn't been used yet is placed once its file has
+   * been fetched, so nothing on the sheet is ever without its artwork.
    */
   placeAssetById: (assetId: string, at?: PlacementPoint) => void;
   /**
@@ -187,7 +203,7 @@ export function EditorStateProvider({
   children,
 }: EditorStateProviderProps) {
   const canvas = useCanvasInteraction();
-  const library = useAssetLibrary();
+  const library = useAccountLibrary(useAssetLibrary());
 
   const [zoom, setZoom] = React.useState(DEFAULT_ZOOM);
   /*
@@ -240,6 +256,12 @@ export function EditorStateProvider({
   );
 
   const placeAsset = (asset: Asset, at?: PlacementPoint) => {
+    if (!getAssetFile(asset.id)) {
+      void library.ensureLocal(asset.id).then((ready) => {
+        if (ready) placeAsset(ready, at);
+      });
+      return;
+    }
     canvas.placeAsset(asset, at);
     library.countPlacement(asset.id);
     onAssetPlaced?.();
@@ -265,9 +287,15 @@ export function EditorStateProvider({
     DesignVersion | "restoring" | null
   >(null);
 
+  /** The library entries this design carries — see `assetsForDesign`. */
+  const designAssets = React.useMemo(
+    () => assetsForDesign(library.assets, canvas.objects),
+    [library.assets, canvas.objects],
+  );
+
   const version = React.useMemo<DesignVersion>(
-    () => ({ document: canvas.document, assets: library.assets, name: designName }),
-    [canvas.document, library.assets, designName],
+    () => ({ document: canvas.document, assets: designAssets, name: designName }),
+    [canvas.document, designAssets, designName],
   );
 
   // Adopted during the render the restored design lands in, rather than in an
@@ -289,9 +317,9 @@ export function EditorStateProvider({
    */
   const { restoreAssets } = library;
   const { replaceDocument } = canvas;
-  const restoreDesign = React.useCallback(
-    (design: RestoredDesign) => {
-      restoreAssets(design.assets);
+  const applyDesign = React.useCallback(
+    (design: RestoredDesign, keepAccountAssets: boolean) => {
+      restoreAssets(design.assets, { keepAccountAssets });
       replaceDocument(design.document);
       onDesignNameChange(design.name);
       setSavedDesignId(design.savedDesignId);
@@ -300,6 +328,12 @@ export function EditorStateProvider({
       );
     },
     [restoreAssets, replaceDocument, onDesignNameChange],
+  );
+
+  // Opening a design keeps the account's graphics in the library.
+  const restoreDesign = React.useCallback(
+    (design: RestoredDesign) => applyDesign(design, true),
+    [applyDesign],
   );
 
   const linkSavedDesign = React.useCallback(
@@ -316,18 +350,18 @@ export function EditorStateProvider({
     [],
   );
 
-  const hasWork = canvas.objects.length > 0 || library.assets.length > 0;
+  const hasWork = canvas.objects.length > 0 || designAssets.length > 0;
 
   const snapshotDesign = (): SerializedDesign => {
     const files = new Map<string, Blob>();
-    for (const asset of library.assets) {
+    for (const asset of designAssets) {
       const file = getAssetFile(asset.id);
       if (file) files.set(asset.id, file);
     }
     return serializeDocument({
       name: designName,
       document: canvas.document,
-      assets: library.assets,
+      assets: designAssets,
       files,
       savedAt: new Date().toISOString(),
     });
@@ -338,10 +372,11 @@ export function EditorStateProvider({
    *
    * By the time this runs the design has been saved under that account, so it
    * is gone from the screen but not from the browser — and the toast says so,
-   * or a sheet emptying itself on sign-out would read as work lost.
+   * or a sheet emptying itself on sign-out would read as work lost. The
+   * account's graphics go too; they come back with the next sign-in.
    */
   const resetDesign = () => {
-    restoreDesign(emptyDesign());
+    applyDesign(emptyDesign(), false);
     if (hasWork) {
       toast.success(
         "Signed out",
@@ -359,7 +394,7 @@ export function EditorStateProvider({
   const recovery = useDraftRecovery({
     scope: { accountId: user?.id ?? null, productId: getSheetProduct().id },
     document: canvas.document,
-    assets: library.assets,
+    assets: designAssets,
     name: designName,
     savedDesignId,
     matchesSavedDesign,
