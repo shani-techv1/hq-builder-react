@@ -30,7 +30,7 @@ import { findNavItem } from "@/lib/navigation";
 import type { SaveState } from "@/lib/workspace";
 
 /**
- * The saved-design prompt: at startup, and on signing in to an account that
+ * The saved-design prompt: on a reload, and on signing in to an account that
  * kept a design for this product.
  *
  * Its own component because it has to sit inside the provider to read the

@@ -25,7 +25,7 @@ export interface DraftRecoveryDialogProps {
 /**
  * The question, and its two answers, for each way a draft comes to be offered.
  *
- * Coming back to the editor, the sheet is empty, so declining starts afresh.
+ * Reloading the editor, the sheet is empty, so declining starts afresh.
  * Signing in over work already on the sheet is different: declining keeps that
  * work, and it takes the saved design's place in the account — which is the
  * part worth saying before anyone chooses.
@@ -92,9 +92,9 @@ export function lastEdited(iso: string): string | null {
 }
 
 /**
- * Offered when a saved design is waiting: at startup, when the last session
- * left something behind, and on signing in, when the account kept one for this
- * product.
+ * Offered when a saved design is waiting: on a reload, when the page left
+ * something behind, and on signing in, when the account kept one for this
+ * product. Opening the editor afresh starts a new sheet without asking.
  *
  * Modal on purpose: it decides which document the editor is about to hold, and
  * anything the user did while it was merely hovering would be thrown away by

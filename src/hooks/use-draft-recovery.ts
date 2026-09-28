@@ -38,8 +38,8 @@ export type RecoveryStatus = "checking" | "prompting" | "ready";
 /**
  * Why a draft is on offer.
  *
- * `resume` is the ordinary case: the sheet is empty — the editor has just
- * opened, or an account was entered with nothing on screen — and a design was
+ * `resume` is the ordinary case: the sheet is empty — the page has just been
+ * reloaded, or an account was entered with nothing on screen — and a design was
  * waiting. `sign-in` is someone signing in over work already on the sheet, to
  * an account that kept a design of its own for this product: two designs for
  * one place, so the user picks.
@@ -116,6 +116,21 @@ function persist(
   );
 }
 
+/**
+ * Whether this page load is the page coming back rather than the editor being
+ * opened afresh.
+ *
+ * A reload, and back or forward — returning from checkout, say — both mean the
+ * shopper was here a moment ago and expects their sheet. Following a link to
+ * the editor means starting a sheet, and is not asked about the last one.
+ */
+function isReturnToPage(): boolean {
+  if (typeof performance === "undefined") return false;
+  const [entry] = performance.getEntriesByType("navigation");
+  const type = (entry as PerformanceNavigationTiming | undefined)?.type;
+  return type === "reload" || type === "back_forward";
+}
+
 /** What looking up one scope's draft settled on. */
 interface Lookup {
   /** The scope it was for — anything else is a lookup still to be made. */
@@ -127,7 +142,7 @@ interface Lookup {
 
 /**
  * Keeps the current design in local storage, filed under whoever is signed in
- * and the product it is for, and offers it back next visit.
+ * and the product it is for, and offers it back when the page is reloaded.
  *
  * Autosave is driven by the identity of `document` and `assets` rather than by
  * a list of actions to remember to call. Selection, hover, zoom and pan never
@@ -176,6 +191,15 @@ export function useDraftRecovery({
   const entered = React.useRef<{ key: string; isAccount: boolean } | null>(
     null,
   );
+
+  /**
+   * Whether a lookup has settled since the editor opened.
+   *
+   * Counted by settling rather than starting, because the first scope isn't
+   * always the one the page opens on: a server render has nobody signed in, and
+   * the account arrives a render later, cancelling the guest lookup it replaces.
+   */
+  const opened = React.useRef(false);
 
   /*
    * The latest render's values, for the handlers and effects that outlive it.
@@ -231,7 +255,13 @@ export function useDraftRecovery({
 
     void loadDraft(key).then((stored) => {
       if (cancelled) return;
-      const draft = deserializeDocument(stored);
+      const opening = !opened.current;
+      opened.current = true;
+      // Opened afresh, the editor starts a new sheet, just as "Start New"
+      // would: the draft isn't offered, and the first autosave replaces it.
+      // Saved work is in My designs; the draft is for a reload.
+      const draft =
+        opening && !isReturnToPage() ? null : deserializeDocument(stored);
       carriedFrom.current = carry;
 
       // Nothing waiting, so whatever is on screen is simply this scope's now.
