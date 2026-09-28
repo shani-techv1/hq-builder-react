@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { useDesignFile } from "@/components/editor/design-file-menu";
+import { SaveDesignDialog } from "@/components/editor/save-design-dialog";
 import { SavedDesignsDialog } from "@/components/editor/saved-designs-menu";
 import { ToolbarButton } from "@/components/toolbar/toolbar-button";
 import { toast } from "@/components/ui/toast";
@@ -73,12 +74,18 @@ export function ToolbarOverflowMenu({
     if (error) toast.error(error);
   });
   const [designsOpen, setDesignsOpen] = React.useState(false);
+  const [savingAsNew, setSavingAsNew] = React.useState(false);
   const saved = useSavedDesigns();
 
   return (
     <>
       <input {...designFile.inputProps} />
       <SavedDesignsDialog open={designsOpen} onOpenChange={setDesignsOpen} />
+      <SaveDesignDialog
+        open={savingAsNew}
+        onOpenChange={setSavingAsNew}
+        mode="copy"
+      />
 
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -147,7 +154,7 @@ export function ToolbarOverflowMenu({
               header's Save already makes a new one. */}
           {saved.access === "ready" && saved.currentId ? (
             <DropdownMenuItem
-              onClick={() => void saved.save({ asNew: true })}
+              onClick={() => setSavingAsNew(true)}
               disabled={saved.busy !== null}
               className="py-1.5"
             >

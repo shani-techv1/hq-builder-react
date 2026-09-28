@@ -129,6 +129,13 @@ export interface EditorState {
   recovery: DraftRecovery;
   /** Apply a design from a draft or an imported file, replacing what's open. */
   restoreDesign: (design: RestoredDesign) => void;
+  /** Rename the design on screen — what a save under a new name does. */
+  setDesignName: (name: string) => void;
+  /**
+   * Whether there is anything to save: artwork on the sheet, or uploads that
+   * would be lost with the design.
+   */
+  hasWork: boolean;
   /**
    * Which of the account's saved designs is on screen, if any.
    *
@@ -309,6 +316,8 @@ export function EditorStateProvider({
     [],
   );
 
+  const hasWork = canvas.objects.length > 0 || library.assets.length > 0;
+
   const snapshotDesign = (): SerializedDesign => {
     const files = new Map<string, Blob>();
     for (const asset of library.assets) {
@@ -332,9 +341,8 @@ export function EditorStateProvider({
    * or a sheet emptying itself on sign-out would read as work lost.
    */
   const resetDesign = () => {
-    const hadWork = canvas.objects.length > 0 || library.assets.length > 0;
     restoreDesign(emptyDesign());
-    if (hadWork) {
+    if (hasWork) {
       toast.success(
         "Signed out",
         "Your design is saved to your account on this device. Sign back in to pick it up.",
@@ -396,6 +404,8 @@ export function EditorStateProvider({
         placeAssetById,
         recovery,
         restoreDesign,
+        setDesignName: onDesignNameChange,
+        hasWork,
         savedDesignId,
         matchesSavedDesign,
         version,

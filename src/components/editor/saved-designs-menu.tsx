@@ -327,8 +327,11 @@ function SavedDesignsList({
   );
 }
 
-/** "22″ × 24″ · 12 objects · Today at 2:43 PM", leaving out whatever is unknown. */
-function describe(design: SavedDesignSummary): string {
+/**
+ * "22″ × 24″ · 12 objects · Today at 2:43 PM", leaving out whatever is unknown.
+ * Exported for the save dialog, which lists the same designs to replace.
+ */
+export function describeSavedDesign(design: SavedDesignSummary): string {
   const parts = [
     sheetSizeLabel(design.sheetSize),
     design.objectCount === 1 ? "1 object" : `${design.objectCount} objects`,
@@ -352,7 +355,7 @@ function SavedDesignRow({
   onChoose: () => void;
   onDelete: () => void;
 }) {
-  const details = describe(design);
+  const details = describeSavedDesign(design);
 
   return (
     <li className="flex items-center gap-1 rounded-lg transition-colors hover:bg-muted/60">
