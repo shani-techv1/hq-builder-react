@@ -48,6 +48,11 @@ export interface Asset {
   source: string;
   /** The account's record of this graphic, once it is kept there. */
   accountAsset?: AccountAssetLink;
+  /**
+   * Deleted from the library, and kept only for artwork still on the sheet —
+   * so reopening a design doesn't list it again.
+   */
+  deleted?: true;
 }
 
 /** Which of the account's graphics an asset is, and where its file lives. */

@@ -63,6 +63,8 @@ export interface SerializedAsset {
    * it twice beside the account's own copy.
    */
   accountAsset?: AccountAssetLink;
+  /** See `Asset.deleted`. */
+  deleted?: true;
 }
 
 export interface SerializedDesign {
@@ -146,19 +148,26 @@ export interface SerializeInput {
 }
 
 /**
- * The library entries a design carries: everything on the sheet, and every
- * upload not yet kept on the account.
+ * The assets a design carries: everything on the sheet, and every upload in
+ * the library not yet kept on the account.
  *
  * An account's graphic that isn't placed stays out. It is the account's, not
  * this design's, and comes back with the account's library wherever it is
  * opened — carrying it would copy the whole library into every design.
+ *
+ * `deleted` are assets gone from the library, which are carried only while
+ * their artwork is still on the sheet.
  */
 export function assetsForDesign(
-  assets: Asset[],
+  library: Asset[],
   objects: CanvasObject[],
+  deleted: Asset[] = [],
 ): Asset[] {
   const placed = new Set(objects.map((object) => object.assetId));
-  return assets.filter((asset) => !asset.accountAsset || placed.has(asset.id));
+  return [
+    ...library.filter((asset) => !asset.accountAsset || placed.has(asset.id)),
+    ...deleted.filter((asset) => placed.has(asset.id)),
+  ];
 }
 
 /**
@@ -189,6 +198,7 @@ export function serializeDocument(input: SerializeInput): SerializedDesign {
       thumbnail: asset.thumbnail,
       file,
       ...(asset.accountAsset ? { accountAsset: asset.accountAsset } : {}),
+      ...(asset.deleted ? { deleted: true as const } : {}),
     });
   }
 
@@ -408,6 +418,7 @@ function readAsset(value: unknown): RestoredAsset | null {
     thumbnail: str(value.thumbnail, ""),
     file,
     accountAsset: readAccountAsset(value.accountAsset),
+    deleted: value.deleted === true ? true : undefined,
   };
 }
 

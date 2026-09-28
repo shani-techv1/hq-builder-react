@@ -242,8 +242,20 @@ export function EditorStateProvider({
     setUnit,
   };
 
+  /**
+   * Every asset the sheet can refer to: the library, and anything deleted from
+   * it this session, whose artwork stays wherever it was placed.
+   */
+  const sheetAssets = React.useMemo(
+    () =>
+      library.detached.length > 0
+        ? [...library.assets, ...library.detached]
+        : library.assets,
+    [library.assets, library.detached],
+  );
+
   const findAsset = (id: string | undefined) =>
-    id ? library.assets.find((asset) => asset.id === id) : undefined;
+    id ? sheetAssets.find((asset) => asset.id === id) : undefined;
 
   /*
    * Re-run only when the design or its files change — never on a selection, a
@@ -251,8 +263,8 @@ export function EditorStateProvider({
    * and it has no business running because someone clicked a layer.
    */
   const preflight = React.useMemo(
-    () => runPreflight(canvas.objects, canvas.sheetSize, library.assets),
-    [canvas.objects, canvas.sheetSize, library.assets],
+    () => runPreflight(canvas.objects, canvas.sheetSize, sheetAssets),
+    [canvas.objects, canvas.sheetSize, sheetAssets],
   );
 
   const placeAsset = (asset: Asset, at?: PlacementPoint) => {
@@ -289,8 +301,8 @@ export function EditorStateProvider({
 
   /** The library entries this design carries — see `assetsForDesign`. */
   const designAssets = React.useMemo(
-    () => assetsForDesign(library.assets, canvas.objects),
-    [library.assets, canvas.objects],
+    () => assetsForDesign(library.assets, canvas.objects, library.detached),
+    [library.assets, canvas.objects, library.detached],
   );
 
   const version = React.useMemo<DesignVersion>(

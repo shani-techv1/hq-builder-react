@@ -107,6 +107,14 @@ export interface UploadOptions {
 export interface AssetLibrary {
   /** Every asset, unfiltered. */
   assets: Asset[];
+  /**
+   * Assets deleted from the library this session.
+   *
+   * Not listed, but still described: artwork already on the sheet stays when
+   * its library entry goes, so the sheet — and every design saved from it —
+   * still needs its details and file.
+   */
+  detached: Asset[];
   /** Assets matching the current search. */
   visibleAssets: Asset[];
 
@@ -186,6 +194,7 @@ export function useAssetLibrary(): AssetLibrary {
   const [uploads, setUploads] = React.useState<UploadTask[]>([]);
   const [rejections, setRejections] = React.useState<UploadRejection[]>([]);
   const [downloading, setDownloading] = React.useState<string[]>([]);
+  const [detached, setDetached] = React.useState<Asset[]>([]);
 
   /** Counted per page load, and made unique across loads by {@link SESSION}. */
   const uploadCount = React.useRef(0);
@@ -415,10 +424,17 @@ export function useAssetLibrary(): AssetLibrary {
    *
    * The file itself is not released. Artwork already on the sheet keeps
    * drawing, and undo can restore a placement whose asset was deleted several
-   * steps earlier — only the library entry goes.
+   * steps earlier — only the library entry goes, into {@link detached}.
    */
   const deleteAsset = React.useCallback((id: string) => {
+    const removed = latestAssets.current.find((asset) => asset.id === id);
     setAssets((current) => current.filter((asset) => asset.id !== id));
+    if (removed) {
+      setDetached((current) => [
+        ...current.filter((asset) => asset.id !== id),
+        { ...removed, deleted: true },
+      ]);
+    }
     setPreviewId((current) => (current === id ? null : current));
   }, []);
 
@@ -455,8 +471,10 @@ export function useAssetLibrary(): AssetLibrary {
         return { ...asset, source };
       });
 
+      // What the design carries only for its sheet stays off the list.
+      const listed = rebuilt.filter((asset) => !asset.deleted);
       setAssets((current) => {
-        if (!keepAccountAssets) return rebuilt;
+        if (!keepAccountAssets) return listed;
         // The account's graphics stay, less any the design brought back itself.
         const restoredIds = new Set(rebuilt.map((asset) => asset.accountAsset?.id));
         const restoredUrls = new Set(rebuilt.map(hostedUrlOf));
@@ -466,8 +484,10 @@ export function useAssetLibrary(): AssetLibrary {
             !restoredIds.has(asset.accountAsset.id) &&
             !restoredUrls.has(asset.accountAsset.url),
         );
-        return [...rebuilt, ...kept];
+        return [...listed, ...kept];
       });
+      // Those kept for the sheet being replaced go; the new one's arrive.
+      setDetached(rebuilt.filter((asset) => asset.deleted));
       setPreviewId(null);
       // Uploads from the abandoned session are not coming back.
       setUploads([]);
@@ -515,6 +535,7 @@ export function useAssetLibrary(): AssetLibrary {
 
   return {
     assets,
+    detached,
     visibleAssets,
 
     search,
