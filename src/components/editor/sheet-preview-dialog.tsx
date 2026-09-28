@@ -2,16 +2,22 @@
 
 import { Dialog } from "@base-ui/react/dialog";
 import { motion } from "framer-motion";
-import { ShoppingCart, X } from "lucide-react";
+import { ShoppingCart, TriangleAlert, X } from "lucide-react";
 
 import { PrimaryButton } from "@/components/common/primary-button";
+import { QuantityStepper } from "@/components/editor/quantity-stepper";
 import type { DesignPayload } from "@/lib/commerce";
 import { cn } from "@/lib/utils";
 import { sheetSizeLabel } from "@/lib/workspace";
 
 export interface SheetPreviewDialogProps {
-  /** The sheet as it stood when Preview was pressed. `null` while closed. */
+  /** The sheet as it stood when Add to cart was pressed. `null` while closed. */
   payload: DesignPayload | null;
+  /** What the print checks found — "2 overlaps · 1 layer below 300 DPI" — if anything. */
+  warning: string | null;
+  /** Sheets to order, still adjustable here. */
+  quantity: number;
+  onQuantityChange: (quantity: number) => void;
   onClose: () => void;
   onAddToCart: () => void;
   adding: boolean;
@@ -20,17 +26,22 @@ export interface SheetPreviewDialogProps {
 }
 
 /**
- * The whole sheet, flattened, before it goes in the cart.
+ * The last look before the sheet goes in the cart: the whole sheet, flattened.
  *
  * The same picture the cart line and the order carry, so what is checked here
  * is what the shop receives — on the checkerboard, because the sheet prints on
- * clear film and anything not covered by artwork is see-through.
+ * clear film and anything not covered by artwork is see-through. The print
+ * checks' findings sit under it, since this is the last point they can be
+ * acted on.
  *
- * Add to cart is repeated here: a preview that looks right is the moment to
- * order, and sending someone back to the header to do it wastes the moment.
+ * Two ways out: back to the sheet to change it, or on to the cart with the
+ * number of sheets, which can still be changed here.
  */
 export function SheetPreviewDialog({
   payload,
+  warning,
+  quantity,
+  onQuantityChange,
   onClose,
   onAddToCart,
   adding,
@@ -70,7 +81,7 @@ export function SheetPreviewDialog({
           >
             <div className="relative px-5 pb-3 pt-5">
               <Dialog.Title className="text-[16px] font-bold tracking-tight text-foreground">
-                Preview your sheet
+                Review your sheet
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">
                 {[
@@ -115,6 +126,31 @@ export function SheetPreviewDialog({
                     unaffected.
                   </p>
                 )}
+              </div>
+
+              {warning && objectCount > 0 ? (
+                <p className="mt-2 flex items-start gap-1.5 text-[12px] leading-relaxed text-amber-700">
+                  <TriangleAlert
+                    className="mt-0.5 size-3.5 shrink-0"
+                    strokeWidth={2.2}
+                    aria-hidden
+                  />
+                  <span>
+                    {warning}. Keep editing and open Checks to review, or add
+                    it as it is.
+                  </span>
+                </p>
+              ) : null}
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <span className="text-[12.5px] font-semibold text-foreground">
+                  Sheets to order
+                </span>
+                <QuantityStepper
+                  value={quantity}
+                  onChange={onQuantityChange}
+                  disabled={adding || objectCount === 0}
+                />
               </div>
 
               {error ? (
