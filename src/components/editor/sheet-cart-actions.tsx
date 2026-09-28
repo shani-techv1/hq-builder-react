@@ -1,13 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { Minus, Plus, ShoppingCart } from "lucide-react";
+import { Eye, Minus, Plus, ShoppingCart } from "lucide-react";
 
 import { PrimaryButton } from "@/components/common/primary-button";
+import { SheetPreviewDialog } from "@/components/editor/sheet-preview-dialog";
+import { HeaderButton } from "@/components/header/header-button";
 import {
   getCommerceAdapter,
   getDesignSource,
   isEmbedded,
+  type DesignPayload,
 } from "@/lib/commerce";
 import { cn } from "@/lib/utils";
 
@@ -16,7 +19,7 @@ const MIN_SHEETS = 1;
 const MAX_SHEETS = 99;
 
 /**
- * Quantity and Add to cart, for the storefront build only.
+ * Preview, quantity and Add to cart, for the storefront build only.
  *
  * Renders nothing when no commerce adapter is installed, which is how the
  * standalone editor stays exactly as it was — the alternative, a cart button
@@ -24,11 +27,16 @@ const MAX_SHEETS = 99;
  *
  * Quantity is sheets, not artwork: the sheet size is the variant, so a run of
  * ten identical sheets is one cart line with a quantity, not ten lines.
+ *
+ * Preview shows the flattened sheet the cart line will carry, drawn when the
+ * button is pressed — the picture of what is being bought, not of the sheet as
+ * it was a minute ago.
  */
 export function SheetCartActions() {
   const [quantity, setQuantity] = React.useState(MIN_SHEETS);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [preview, setPreview] = React.useState<DesignPayload | null>(null);
 
   // Read once: the adapter is installed before React mounts, and it never
   // changes for the life of the page.
@@ -39,6 +47,13 @@ export function SheetCartActions() {
     setQuantity((current) =>
       Math.max(MIN_SHEETS, Math.min(MAX_SHEETS, current + by)),
     );
+
+  const openPreview = () => {
+    const source = getDesignSource();
+    if (!source) return;
+    setError(null);
+    setPreview(source());
+  };
 
   const handleAddToCart = async () => {
     const adapter = getCommerceAdapter();
@@ -59,7 +74,8 @@ export function SheetCartActions() {
 
   return (
     <div className="flex shrink-0 items-center gap-2">
-      {error ? (
+      {/* The dialog repeats the reason while it is open. */}
+      {error && !preview ? (
         <p
           role="alert"
           className="hidden max-w-56 truncate text-[12px] text-destructive md:block"
@@ -68,6 +84,15 @@ export function SheetCartActions() {
           {error}
         </p>
       ) : null}
+
+      <HeaderButton
+        icon={Eye}
+        label="Preview"
+        variant="ghost"
+        onClick={openPreview}
+        disabled={busy}
+        labelClassName="hidden lg:inline"
+      />
 
       <div className="flex items-center rounded-lg border border-border">
         <QuantityStep
@@ -102,6 +127,14 @@ export function SheetCartActions() {
           {busy ? "Adding…" : "Add to cart"}
         </span>
       </PrimaryButton>
+
+      <SheetPreviewDialog
+        payload={preview}
+        onClose={() => setPreview(null)}
+        onAddToCart={() => void handleAddToCart()}
+        adding={busy}
+        error={error}
+      />
     </div>
   );
 }
