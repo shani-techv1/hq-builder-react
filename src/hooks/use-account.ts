@@ -11,33 +11,27 @@ import {
   getAccountToken,
   getServerAccountSnapshot,
   recordFailedAttempt,
-  resendOtp,
-  signIn,
-  signUp,
+  requestOtp,
   storeAccount,
   subscribeToAccount,
   verifyOtp,
   type AccountUser,
   type AuthErrorCode,
-  type Credentials,
-  type Registration,
+  type CodeRequest,
+  type OtpSubmission,
   type SignedIn,
 } from "@/lib/auth";
-
-/** Confirming an address, and signing into it once confirmed. */
-export interface Verification extends Credentials {
-  otp: string;
-}
 
 /**
  * How an attempt ended.
  *
  * The whole failure travels with the result rather than being left in state for
  * a later render to pick up. Both halves are needed at the call site and needed
- * *there*: the caller branches on `code` — an unconfirmed address sends the
- * user to the code screen rather than reporting anything — and announces
- * `message` in a toast, and both decisions belong to the handler that awaited
- * the call. Nothing renders a failure, so nothing has to remember one.
+ * *there*: the caller branches on `code` — an address with no account turns
+ * the form into "Create your account" rather than reporting anything — and
+ * announces `message` in a toast, and both decisions belong to the handler
+ * that awaited the call. Nothing renders a failure, so nothing has to remember
+ * one.
  *
  * `message` is absent when there is nothing to say: a second submit arriving
  * while the first is still in flight is discarded, not reported.
@@ -54,24 +48,23 @@ export interface AccountSession {
   user: AccountUser | null;
   isSignedIn: boolean;
   /**
-   * Whether the session holds a token, which saved designs need.
+   * Whether the session holds a token, which the account's saved work needs.
    *
    * False for a session remembered from before the service issued tokens, or
    * one whose token the service has since refused — signed in, but asked to
-   * sign in again before its saved designs can be reached.
+   * sign in again before its saved designs and graphics can be reached.
    */
   isAuthorized: boolean;
   /** True while a request is in flight. */
   pending: boolean;
 
-  /** Signs in, unless the address has never been confirmed. */
-  logIn: (credentials: Credentials) => Promise<AttemptResult>;
-  /** Creates the account and has a code sent to the address. */
-  register: (details: Registration) => Promise<AttemptResult>;
-  /** Confirms the address with the code, then signs in. */
-  verify: (details: Verification) => Promise<AttemptResult>;
-  /** Has another code sent to an address awaiting confirmation. */
-  resend: (email: string) => Promise<AttemptResult>;
+  /**
+   * Has a sign-in code emailed to the address — creating the account first
+   * when a name comes with it. Also how a new code is asked for.
+   */
+  requestCode: (request: CodeRequest) => Promise<AttemptResult>;
+  /** Exchanges the code for a session. */
+  verify: (submission: OtpSubmission) => Promise<AttemptResult>;
   logOut: () => void;
 }
 
@@ -125,9 +118,9 @@ export function useAccount(): AccountSession {
   /**
    * One attempt at the service, whether or not it ends in a session.
    *
-   * Work that establishes one resolves with the session and it is stored; work that
-   * only moves the sign-up along — creating the account, sending another code —
-   * resolves with `null` and leaves whoever is signed in exactly as they were.
+   * Work that establishes one resolves with the session and it is stored; work
+   * that only moves the sign-in along — sending a code — resolves with `null`
+   * and leaves whoever is signed in exactly as they were.
    * Both share the guard, the brake and the error handling, which is the part
    * that must not be written twice.
    */
@@ -160,11 +153,9 @@ export function useAccount(): AccountSession {
         }
         return SUCCEEDED;
       } catch (cause) {
-        // A rejected credential or code counts; being offline or timing out
-        // does not — the guess was never assessed, and locking someone out of a
-        // form because their connection dropped would be punishing the wrong
-        // thing. Nor does an unverified address: the password was right, and
-        // the answer to it is the code screen, not a lockout.
+        // A rejected code counts; being offline or timing out does not — the
+        // guess was never assessed, and locking someone out of a form because
+        // their connection dropped would be punishing the wrong thing.
         if (
           cause instanceof AuthError &&
           (cause.code === "INVALID_CREDENTIALS" || cause.code === "INVALID_OTP")
@@ -192,42 +183,17 @@ export function useAccount(): AccountSession {
     isAuthorized,
     pending,
 
-    logIn: React.useCallback(
-      (credentials: Credentials) => attempt(() => signIn(credentials)),
-      [attempt],
-    ),
-    register: React.useCallback(
-      (details: Registration) => attempt(async () => {
-        await signUp(details);
-        // No session yet, and deliberately so — the account is inert until the
-        // code is confirmed.
-        return null;
-      }),
-      [attempt],
-    ),
-
-    /**
-     * The code, and then the session.
-     *
-     * The password is passed through from the form that was already holding it
-     * so confirming an address ends signed in rather than back at a login the
-     * user has just proved they can pass. It is only sent if the service
-     * doesn't hand back a user itself.
-     */
-    verify: React.useCallback(
-      ({ email, otp, password }: Verification) =>
+    requestCode: React.useCallback(
+      (request: CodeRequest) =>
         attempt(async () => {
-          const verified = await verifyOtp({ email, otp });
-          return verified ?? (await signIn({ email, password }));
-        }),
-      [attempt],
-    ),
-    resend: React.useCallback(
-      (email: string) =>
-        attempt(async () => {
-          await resendOtp(email);
+          await requestOtp(request);
+          // No session yet — that is what the code is for.
           return null;
         }),
+      [attempt],
+    ),
+    verify: React.useCallback(
+      (submission: OtpSubmission) => attempt(() => verifyOtp(submission)),
       [attempt],
     ),
 

@@ -4,7 +4,7 @@ import * as React from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { OTPField } from "@base-ui/react/otp-field";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, MailCheck, UserPlus, UserRound, X } from "lucide-react";
+import { MailCheck, UserPlus, UserRound, X } from "lucide-react";
 
 import { PrimaryButton } from "@/components/common/primary-button";
 import { Input } from "@/components/ui/input";
@@ -13,14 +13,10 @@ import { useAccount } from "@/hooks/use-account";
 import {
   MAX_EMAIL_LENGTH,
   MAX_NAME_LENGTH,
-  MAX_PASSWORD_LENGTH,
   OTP_LENGTH,
-  PASSWORD_RULE,
   emailError,
   nameError,
-  newPasswordError,
   otpError,
-  passwordError,
 } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
@@ -28,13 +24,12 @@ import { cn } from "@/lib/utils";
 export type AccountMode = "signin" | "signup";
 
 /**
- * Which half of it: the credentials, or the code that confirms the address.
+ * Which half of it: who is signing in, or the code that proves it.
  *
- * A step rather than a third mode, because the code screen is reached from
- * both — after signing up, and after signing in to an account that was never
- * confirmed — and it continues whichever one the user started.
+ * A step rather than a third mode, because the code screen follows both — and
+ * it finishes whichever one the user started.
  */
-type AccountStep = "credentials" | "verify";
+type AccountStep = "details" | "verify";
 
 export interface AccountDialogProps {
   open: boolean;
@@ -46,14 +41,12 @@ export interface AccountDialogProps {
 interface FieldErrors {
   name: string | null;
   email: string | null;
-  password: string | null;
   otp: string | null;
 }
 
 const NO_FIELD_ERRORS: FieldErrors = {
   name: null,
   email: null,
-  password: null,
   otp: null,
 };
 
@@ -61,20 +54,18 @@ const COPY = {
   signin: {
     icon: UserRound,
     title: "Sign in",
-    description: "Sign in to keep your designs with your account.",
-    submit: "Sign in",
-    submitting: "Signing in…",
+    description: "We’ll email you a code to sign in with — no password needed.",
     switchPrompt: "New here?",
     switchAction: "Create an account",
+    signedIn: "Your designs and graphics are saved to your account.",
   },
   signup: {
     icon: UserPlus,
     title: "Create your account",
-    description: "It takes a moment, and your designs stay with you.",
-    submit: "Create account",
-    submitting: "Creating account…",
+    description: "Your designs and graphics stay with your account, on any device.",
     switchPrompt: "Already have an account?",
     switchAction: "Sign in",
+    signedIn: "Your account is ready.",
   },
 } as const;
 
@@ -83,7 +74,8 @@ const COPY = {
  *
  * Every request sends a real email, and the second one rarely arrives faster
  * than the first — the wait is there to say so, rather than to let someone
- * queue five copies while the first is still in flight.
+ * queue five copies while the first is still in flight. The service enforces
+ * the same wait.
  */
 const RESEND_COOLDOWN_SECONDS = 30;
 
@@ -102,7 +94,7 @@ const LINK_BUTTON = cn(
  * {@link AccountForm} below, which is mounted inside the popup and therefore
  * unmounts with it — so the next open starts from a genuinely empty form
  * rather than from state something had to remember to clear. A half-typed
- * password surviving a dismissal is exactly the kind of thing that should not
+ * code surviving a dismissal is exactly the kind of thing that should not
  * depend on someone maintaining a reset.
  */
 export function AccountDialog({
@@ -155,20 +147,14 @@ export function AccountDialog({
  *
  * One form rather than two screens, because the two differ by a single field
  * and a heading — and because someone who mistook one for the other should be
- * able to correct it without losing what they have typed. The email and
- * password carry across the switch; only the errors are dropped, since they
- * were answers to the other question.
+ * able to correct it without losing what they have typed. The address carries
+ * across the switch; only the errors are dropped, since they were answers to
+ * the other question. An address with no account switches it for them.
  *
  * Validation runs here before anything is sent, using the same rules the
  * service enforces, so an obvious mistake costs a keystroke rather than a round
- * trip. The service still has the last word, and what it says is shown verbatim
- * above the button — it knows things this cannot, like whether an address is
- * already registered.
- *
- * The password stays in state after the account is created, because confirming
- * the code signs the new account in and the service may answer the code with a
- * message rather than a user. It is memory only — the same rule the rest of
- * this flow follows — and it goes when the dialog closes.
+ * trip. The service still has the last word, and what it says is shown in a
+ * toast — it knows things this cannot, like whether a code has expired.
  */
 function AccountForm({
   initialMode,
@@ -179,15 +165,13 @@ function AccountForm({
   firstFieldRef: React.RefObject<HTMLInputElement | null>;
   onDone: () => void;
 }) {
-  const { pending, logIn, register, verify, resend } = useAccount();
+  const { pending, requestCode, verify } = useAccount();
 
   const [mode, setMode] = React.useState<AccountMode>(initialMode);
-  const [step, setStep] = React.useState<AccountStep>("credentials");
+  const [step, setStep] = React.useState<AccountStep>("details");
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
-  const [password, setPassword] = React.useState("");
   const [otp, setOtp] = React.useState("");
-  const [revealed, setRevealed] = React.useState(false);
   const [fieldErrors, setFieldErrors] = React.useState(NO_FIELD_ERRORS);
   const [resendIn, setResendIn] = React.useState(0);
 
@@ -215,11 +199,17 @@ function AccountForm({
     if (verifying) focusOtp();
   }, [verifying, focusOtp]);
 
-  const goToVerify = (cooldown = 0) => {
+  /* Switching to "Create your account" puts a name field above the address,
+     and that field is the one still to fill in. */
+  React.useEffect(() => {
+    if (mode === "signup") firstFieldRef.current?.focus();
+  }, [mode, firstFieldRef]);
+
+  const goToVerify = () => {
     setStep("verify");
     setOtp("");
     setFieldErrors(NO_FIELD_ERRORS);
-    setResendIn(cooldown);
+    setResendIn(RESEND_COOLDOWN_SECONDS);
   };
 
   const switchMode = () => {
@@ -227,12 +217,15 @@ function AccountForm({
     setFieldErrors(NO_FIELD_ERRORS);
   };
 
-  /** Back to the credentials, keeping them — usually a mistyped address. */
+  /** Back to the address, keeping it — usually a typo in it. */
   const editDetails = () => {
-    setStep("credentials");
+    setStep("details");
     setOtp("");
     setFieldErrors(NO_FIELD_ERRORS);
   };
+
+  /** The name only counts when creating an account; signing in ignores it. */
+  const codeRequest = () => ({ email, name: signingUp ? name : undefined });
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -243,9 +236,9 @@ function AccountForm({
       setFieldErrors({ ...NO_FIELD_ERRORS, otp: invalid });
       if (invalid) return;
 
-      const result = await verify({ email, otp, password });
+      const result = await verify({ email, otp });
       if (result.ok) {
-        toast.success("Email confirmed", "You’re signed in.");
+        toast.success("Signed in", copy.signedIn);
         onDone();
         return;
       }
@@ -264,65 +257,45 @@ function AccountForm({
     const errors: FieldErrors = {
       name: signingUp ? nameError(name) : null,
       email: emailError(email),
-      // The rules apply to a password being chosen, not to one being entered —
-      // see `passwordError`. The name and address go in so a password built
-      // out of either can be caught before it is created.
-      password: signingUp
-        ? newPasswordError(password, { email, name })
-        : passwordError(password),
       otp: null,
     };
     setFieldErrors(errors);
-    if (errors.name || errors.email || errors.password) return;
+    if (errors.name || errors.email) return;
 
-    if (signingUp) {
-      const created = await register({ name, email, password });
-      if (created.ok) {
-        goToVerify(RESEND_COOLDOWN_SECONDS);
-        toast.success(
-          "Check your email",
-          `We sent a ${OTP_LENGTH}-digit code to ${email.trim()}.`,
-        );
-      } else if (created.message) {
-        toast.error("Couldn’t create your account", created.message);
-      }
-      return;
-    }
-
-    const result = await logIn({ email, password });
+    const result = await requestCode(codeRequest());
     if (result.ok) {
-      toast.success("Signed in", "Your designs are saved to your account.");
-      onDone();
-      return;
-    }
-
-    // An account that was never confirmed. The password was accepted, so this
-    // is an unfinished sign-up rather than a failed sign-in, and it carries on
-    // to the code screen. No code is sent from here: one went out when the
-    // account was created, and mailing another on every attempt would make this
-    // form a way to send someone email.
-    if (result.code === "EMAIL_NOT_VERIFIED") {
       goToVerify();
-      toast.error(
-        "Confirm your email first",
-        "Use the code from your sign-up email, or ask for a new one.",
+      toast.success(
+        "Check your email",
+        `We sent a ${OTP_LENGTH}-digit code to ${email.trim()}.`,
       );
       return;
     }
 
-    if (result.message) toast.error("Couldn’t sign in", result.message);
+    // No account under that address: the same form, with a name, makes one.
+    if (result.code === "ACCOUNT_NOT_FOUND" && !signingUp) {
+      setMode("signup");
+      setFieldErrors(NO_FIELD_ERRORS);
+      toast.warning(
+        "No account for that email yet",
+        "Add your name to create one — it only takes a moment.",
+      );
+      return;
+    }
+
+    if (result.message) toast.error("Couldn’t send a code", result.message);
   };
 
   /** What the one submit button is for, on whichever screen it is showing. */
   const action = verifying
-    ? { submit: "Verify email", submitting: "Verifying…" }
-    : { submit: copy.submit, submitting: copy.submitting };
+    ? { submit: "Sign in", submitting: "Signing in…" }
+    : { submit: "Email me a code", submitting: "Sending code…" };
 
   const handleResend = async () => {
     if (pending || resendIn > 0) return;
     setFieldErrors(NO_FIELD_ERRORS);
 
-    const result = await resend(email);
+    const result = await requestCode(codeRequest());
     if (result.ok) {
       setOtp("");
       setResendIn(RESEND_COOLDOWN_SECONDS);
@@ -377,9 +350,9 @@ function AccountForm({
         <div className="space-y-3 px-5">
           {verifying ? (
             <Field
-              label="Verification code"
+              label="Sign-in code"
               error={fieldErrors.otp}
-              hint="Codes expire, so use the most recent email."
+              hint="Codes expire after 10 minutes, so use the most recent email."
               /* Field's `className` is for a single control and is dropped
                  here; the rest of its wiring is taken by name. Base UI gives
                  the root's id to the first slot, so the label points at it. */
@@ -466,57 +439,11 @@ function AccountForm({
                   />
                 )}
               />
-
-              <Field
-                label="Password"
-                error={fieldErrors.password}
-                hint={signingUp ? PASSWORD_RULE : undefined}
-                input={(props) => (
-                  <span className="relative block">
-                    <Input
-                      {...props}
-                      type={revealed ? "text" : "password"}
-                      autoComplete={
-                        signingUp ? "new-password" : "current-password"
-                      }
-                      maxLength={MAX_PASSWORD_LENGTH}
-                      value={password}
-                      disabled={pending}
-                      className={cn(props.className, "pr-10")}
-                      onChange={(event) => {
-                        setPassword(event.target.value);
-                        setFieldErrors((current) => ({
-                          ...current,
-                          password: null,
-                        }));
-                      }}
-                    />
-                    <button
-                      type="button"
-                      aria-label={revealed ? "Hide password" : "Show password"}
-                      title={revealed ? "Hide password" : "Show password"}
-                      onClick={() => setRevealed((current) => !current)}
-                      className={cn(
-                        "absolute right-1 top-1/2 grid size-8 -translate-y-1/2 place-items-center",
-                        "rounded-lg text-muted-foreground transition-colors outline-none",
-                        "hover:bg-muted hover:text-foreground",
-                        "focus-visible:ring-3 focus-visible:ring-ring/40",
-                      )}
-                    >
-                      {revealed ? (
-                        <EyeOff className="size-4" strokeWidth={2} aria-hidden />
-                      ) : (
-                        <Eye className="size-4" strokeWidth={2} aria-hidden />
-                      )}
-                    </button>
-                  </span>
-                )}
-              />
             </>
           )}
 
-          {/* What the service said — the address is taken, the password is
-              wrong, the code has expired — is announced in a toast rather than
+          {/* What the service said — the code is wrong, it has expired, a new
+              one was asked for too soon — is announced in a toast rather than
               here. It outlives the dialog, which closes on success, and it is
               about the attempt rather than about any one field. */}
         </div>
@@ -588,9 +515,9 @@ interface FieldInputProps {
  * Label, control and message as one unit.
  *
  * The input is a render prop rather than a child because every field wires the
- * same four accessibility props onto it, and the password field wraps its input
- * in a button-bearing container — passing them down is what keeps that wrapper
- * from breaking the association with the label and the error.
+ * same four accessibility props onto it, and the code field is a row of inputs
+ * rather than one — passing them down is what keeps the association with the
+ * label and the error intact however the control is built.
  */
 function Field({
   label,
