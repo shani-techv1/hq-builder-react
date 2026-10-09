@@ -8,6 +8,7 @@ import {
   absorbTextScale,
   applyObjectState,
   createFabricObject,
+  keepOnSheet,
   measureBox,
   needsRebuild,
   objectIdOf,
@@ -227,8 +228,17 @@ export function useFabricCanvas({
     canvas.on("selection:created", reportSelection);
     canvas.on("selection:updated", reportSelection);
     canvas.on("selection:cleared", reportSelection);
+    // Dragging stops at the sheet's edge rather than carrying artwork off it.
+    // Fabric recomputes the position from the pointer on every frame, so the
+    // clamp never accumulates and the piece follows again once back inside.
+    canvas.on("object:moving", (event) => {
+      keepOnSheet(event.target, latest.current.sheet);
+    });
     canvas.on("object:modified", (event) => {
       if (applying.current || !event.target) return;
+      // Resizing or rotating can still push a corner past the edge; it is
+      // nudged back on release, before the result is stored.
+      keepOnSheet(event.target, latest.current.sheet);
       reportTransform(event.target);
     });
 

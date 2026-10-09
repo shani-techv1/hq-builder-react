@@ -479,6 +479,45 @@ export function absorbTextScale(target: FabricObject): number | null {
 }
 
 /**
+ * How far a span starting at `start` has to move to sit inside `[0, limit]`.
+ *
+ * A span longer than the sheet can't fit, so it is kept covering it instead:
+ * it can still slide, but never far enough to leave part of the sheet bare.
+ */
+function offsetOntoSheet(start: number, size: number, limit: number): number {
+  const slack = limit - size;
+  const clamped = Math.min(
+    Math.max(start, Math.min(0, slack)),
+    Math.max(0, slack),
+  );
+  return clamped - start;
+}
+
+/**
+ * Slide an object back onto the sheet if any part of it hangs off an edge.
+ *
+ * Artwork past the edge is artwork that doesn't print — the canvas is exactly
+ * the sheet, so it was already being cut off on screen too. Measured on the
+ * rotated outline, so a turned piece's corners stay on as well, and applied to
+ * whatever is being transformed, so a multi-selection moves as one block.
+ *
+ * Only ever a translation: the object keeps the size and angle it was given.
+ */
+export function keepOnSheet(target: FabricObject, sheet: SheetMetrics) {
+  // Fabric fires `object:moving` before it refreshes the coordinates this
+  // measures, so they are brought up to date first.
+  target.setCoords();
+  const box = target.getBoundingRect();
+
+  const dx = offsetOntoSheet(box.left, box.width, sheet.width);
+  const dy = offsetOntoSheet(box.top, box.height, sheet.height);
+  if (dx === 0 && dy === 0) return;
+
+  target.set({ left: target.left + dx, top: target.top + dy });
+  target.setCoords();
+}
+
+/**
  * Read a Fabric object's absolute transform back into the editor's units.
  *
  * Decomposing the transform matrix rather than reading `left`/`top` directly
