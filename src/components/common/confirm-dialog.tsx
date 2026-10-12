@@ -21,6 +21,11 @@ export interface ConfirmDialogProps {
   pending?: boolean;
   /** For actions that delete something. */
   destructive?: boolean;
+  /**
+   * A third answer, between cancelling and confirming — "Don’t save" beside
+   * "Save & exit". It gives something up, so it reads as destructive.
+   */
+  alternative?: { label: string; onSelect: () => void };
 }
 
 /**
@@ -43,6 +48,7 @@ export function ConfirmDialog({
   pendingLabel,
   pending = false,
   destructive = false,
+  alternative,
 }: ConfirmDialogProps) {
   return (
     <Dialog.Root
@@ -92,7 +98,16 @@ export function ConfirmDialog({
               </Dialog.Description>
             </div>
 
-            <div className="flex items-center gap-2 border-t border-border bg-canvas/50 px-5 py-3">
+            <div
+              className={cn(
+                "flex items-center gap-2 border-t border-border bg-canvas/50 px-5 py-3",
+                // Three answers share a row unevenly, each label on one line;
+                // on a phone they don't fit side by side at all. Stacked, the
+                // one being asked for is on top.
+                alternative &&
+                  "whitespace-nowrap max-sm:flex-col-reverse max-sm:items-stretch",
+              )}
+            >
               <PrimaryButton
                 variant="outline"
                 size="md"
@@ -101,6 +116,17 @@ export function ConfirmDialog({
               >
                 Cancel
               </PrimaryButton>
+              {alternative ? (
+                <PrimaryButton
+                  variant="outline"
+                  size="md"
+                  onClick={alternative.onSelect}
+                  disabled={pending}
+                  className="text-destructive hover:border-destructive/40 hover:bg-destructive/5 hover:text-destructive"
+                >
+                  {alternative.label}
+                </PrimaryButton>
+              ) : null}
               <PrimaryButton
                 size="md"
                 onClick={onConfirm}

@@ -35,6 +35,8 @@ export interface SaveDesignDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   mode: SaveDesignMode;
+  /** Called once the design is saved, after the dialog has closed. */
+  onSaved?: () => void;
 }
 
 /**
@@ -47,7 +49,12 @@ export interface SaveDesignDialogProps {
  * It can't be dismissed while the save is running: the answer has been given,
  * and closing now would hide whether it worked.
  */
-export function SaveDesignDialog({ open, onOpenChange, mode }: SaveDesignDialogProps) {
+export function SaveDesignDialog({
+  open,
+  onOpenChange,
+  mode,
+  onSaved,
+}: SaveDesignDialogProps) {
   const saved = useSavedDesigns();
   const saving = saved.busy?.kind === "save" && !saved.busy.auto;
   const nameField = React.useRef<HTMLInputElement>(null);
@@ -88,6 +95,7 @@ export function SaveDesignDialog({ open, onOpenChange, mode }: SaveDesignDialogP
               saving={saving}
               nameFieldRef={nameField}
               onDone={() => onOpenChange(false)}
+              onSaved={onSaved}
             />
           </motion.div>
         </Dialog.Popup>
@@ -102,12 +110,14 @@ function SaveDesignForm({
   saving,
   nameFieldRef,
   onDone,
+  onSaved,
 }: {
   mode: SaveDesignMode;
   saved: SavedDesigns;
   saving: boolean;
   nameFieldRef: React.RefObject<HTMLInputElement | null>;
   onDone: () => void;
+  onSaved?: () => void;
 }) {
   const { version } = useEditorState();
   const { designs, refresh } = saved;
@@ -129,7 +139,10 @@ function SaveDesignForm({
   }, [mode, refresh]);
 
   const save = async (to: SaveTarget) => {
-    if (await saved.save({ to, name: name.trim() })) onDone();
+    if (await saved.save({ to, name: name.trim() })) {
+      onDone();
+      onSaved?.();
+    }
   };
 
   const handleSubmit = (event: React.FormEvent) => {

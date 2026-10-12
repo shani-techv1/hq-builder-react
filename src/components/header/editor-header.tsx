@@ -10,17 +10,18 @@ export interface EditorHeaderProps {
   designName: string;
   onDesignNameChange: (name: string) => void;
   saveStatus: SaveState;
+  /** The way out of the editor, at the far left. */
+  exit?: React.ReactNode;
   /** Controls that need the editor's state, saving last. */
   actions?: React.ReactNode;
 }
 
 /**
- * The editor's top bar: identity on the left, the design being worked on in
- * the middle, and saving on the right.
+ * The editor's top bar: the way out and identity on the left, the design being
+ * worked on in the middle, and saving on the right.
  *
- * Close, Share, Account and Confirm were removed in the MVP cleanup — none of
- * them did anything yet, and a header full of inert buttons teaches people to
- * ignore the header.
+ * Share and Confirm were removed in the MVP cleanup — neither did anything
+ * yet, and a header full of inert buttons teaches people to ignore the header.
  *
  * The mark is left off on a phone. There the storefront's quantity and cart
  * buttons take most of the bar, and the room is worth more to the name of the
@@ -30,10 +31,21 @@ export function EditorHeader({
   designName,
   onDesignNameChange,
   saveStatus,
+  exit,
   actions,
 }: EditorHeaderProps) {
   return (
     <header className="relative z-40 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-3 sm:px-4">
+      {exit ? (
+        <>
+          {exit}
+          <Separator
+            orientation="vertical"
+            className="mx-1 hidden data-vertical:h-6 md:block"
+          />
+        </>
+      ) : null}
+
       <AppLogo className="hidden shrink-0 md:flex" />
 
       <Separator

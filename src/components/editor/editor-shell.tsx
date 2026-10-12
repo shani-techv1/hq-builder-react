@@ -9,6 +9,7 @@ import {
 } from "@/components/editor/editor-state";
 import { DraftRecoveryDialog } from "@/components/editor/draft-recovery-dialog";
 import { DesignFileMenu } from "@/components/editor/design-file-menu";
+import { ExitEditorButton } from "@/components/editor/exit-editor-button";
 import { SaveDesignButtons } from "@/components/editor/save-design-buttons";
 import { SavedDesignsMenu } from "@/components/editor/saved-designs-menu";
 import { SheetCartActions } from "@/components/editor/sheet-cart-actions";
@@ -83,6 +84,9 @@ function ShellHeader({
       designName={designName}
       onDesignNameChange={onDesignNameChange}
       saveStatus={saveStatus}
+      // Handed the indicator's own reading, so leaving never asks about a
+      // sheet the header calls saved, nor skips one it calls unsaved.
+      exit={<ExitEditorButton saveStatus={saveStatus} />}
       actions={
         <>
           {/* On a phone, My designs, export and import move to the toolbar's

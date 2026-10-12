@@ -5,6 +5,7 @@ import "./app/globals.css";
 import { EditorShell } from "@/components/editor/editor-shell";
 import { ToastProvider } from "@/components/ui/toast";
 import { setCommerceAdapter, type DesignPayload } from "@/lib/commerce";
+import { setExitUrl } from "@/lib/exit";
 import {
   addItemsToCart,
   cartAddRequest,
@@ -202,6 +203,11 @@ function boot() {
     )?.id ?? null,
   );
   setCommerceAdapter(createAdapter(bootstrap));
+  // Exit goes back to the product page; this is it, for a shopper with no
+  // page behind the editor to go back to.
+  if (bootstrap.product.handle) {
+    setExitUrl(`/products/${encodeURIComponent(bootstrap.product.handle)}`);
+  }
 
   container.innerHTML = "";
   ReactDOM.createRoot(container).render(
