@@ -62,21 +62,15 @@ const WRAP_VECTORS: Record<LinearDirection, { x: number; y: number }> = {
 };
 
 /**
- * A ceiling on the grid a free-space fill will look through.
+ * A ceiling on the spots a fill will look at.
  *
- * The scan stops as soon as it has the copies it was asked for, so this only
- * bites on a full sheet of very small artwork — where the honest answer is
- * that there is no room anyway. Without it, artwork a thousandth of an inch
- * across would have the editor counting cells for a visible pause.
+ * A fill maps every spot on the sheet a copy could go, because how many fit is
+ * the most the count may ask for. Artwork of any printable size comes to a few
+ * hundred spots; this only bites on very small artwork on a long sheet. Without
+ * it, artwork a thousandth of an inch across would have the editor counting
+ * cells for a visible pause.
  */
 const MAX_SCANNED_CELLS = 20000;
-
-/**
- * A single fill can't be an accident or a stress test. Past this the sheet is
- * better filled by running autofill twice than by one enormous number typed
- * into a field.
- */
-export const MAX_AUTOFILL_COPIES = 100;
 
 /**
  * What the panel opens with.
@@ -92,14 +86,33 @@ export const AUTOFILL_DEFAULTS = {
   keepInSafeZone: true,
 };
 
-export interface AutofillRequest {
-  /** Copies to add — the original is not one of them. */
-  count: number;
+/** How a fill is laid out — everything about it except how many copies. */
+export interface AutofillOptions {
   direction: AutofillDirection;
   /** Distance between one copy and the next, in inches. */
   gapInches: number;
   /** Stop at the sheet's trim margin rather than at its edge. */
   keepInSafeZone: boolean;
+}
+
+/** One place a copy fits, as an offset from the selection in sheet percentages. */
+interface AutofillSpot {
+  x: number;
+  y: number;
+  /**
+   * The row or column it lands on, numbered from 0 in fill order. A line fill
+   * counts the selection's own line as 0; a free-space fill counts only the
+   * rows that took a copy.
+   */
+  line: number;
+}
+
+/**
+ * Every place on the sheet a copy of the selection fits, in the order a fill
+ * takes them. How many there are is the most a single fill can make.
+ */
+export interface AutofillLayout {
+  spots: AutofillSpot[];
 }
 
 export interface AutofillPlan {
@@ -119,12 +132,8 @@ export interface AutofillPlan {
 /** Percentages carry rounding error; a copy is not "off the sheet" by 1e-9. */
 const TOLERANCE = 1e-6;
 
-/** Clamp a typed number to something the fill can actually use. */
-export const clampCopies = (count: number): number =>
-  Math.max(0, Math.min(MAX_AUTOFILL_COPIES, Math.floor(count)));
-
 /**
- * Work out where the copies go and how many of them fit.
+ * Work out every place a copy of the selection fits.
  *
  * The selection is treated as one block: its bounding box sets the stride, so
  * filling with two pieces selected repeats the pair rather than interleaving
@@ -145,20 +154,23 @@ export const clampCopies = (count: number): number =>
  * artwork that is in the way is how you fill a row, and stopping short of it
  * would make the count depend on what happened to be underneath.
  *
+ * The count is left out on purpose: a fill of N copies is the first N spots,
+ * so this is worked out once per change to the sheet or the settings and
+ * {@link planAutofill} picks from it as the count is typed.
+ *
  * Returns `null` when there is nothing selected to copy.
  */
-export function planAutofill(
+export function layoutAutofill(
   selection: CanvasObject[],
   sheetSize: string,
-  request: AutofillRequest,
+  options: AutofillOptions,
   occupied: CanvasObject[],
-): AutofillPlan | null {
+): AutofillLayout | null {
   const box = boundingBox(selection);
   if (!box) return null;
 
   const sheet = sheetInches(sheetSize);
-  const requested = clampCopies(request.count);
-  const gapInches = Math.max(0, request.gapInches);
+  const gapInches = Math.max(0, options.gapInches);
 
   /* The gap as a share of each axis. A sheet is not square, so one distance
      in inches is two different percentages. */
@@ -172,17 +184,20 @@ export function planAutofill(
 
   /* Safe zone off means the sheet's own edge is the limit — a copy hanging
      off the film is never what anyone meant by "duplicate". */
-  const marginX = request.keepInSafeZone
+  const marginX = options.keepInSafeZone
     ? (SHEET_SAFE_MARGIN_IN / sheet.width) * 100
     : 0;
-  const marginY = request.keepInSafeZone
+  const marginY = options.keepInSafeZone
     ? (SHEET_SAFE_MARGIN_IN / sheet.height) * 100
     : 0;
 
-  if (request.direction === "free") {
+  // Artwork with no size has no stride to step by; without this every copy
+  // lands on the same spot and the walk never reaches an edge.
+  if (strideX <= TOLERANCE || strideY <= TOLERANCE) return { spots: [] };
+
+  if (options.direction === "free") {
     return packFreeSpace({
       box,
-      requested,
       strideX,
       strideY,
       gapX,
@@ -193,8 +208,8 @@ export function planAutofill(
     });
   }
 
-  const vector = VECTORS[request.direction];
-  const wrapVector = WRAP_VECTORS[request.direction];
+  const vector = VECTORS[options.direction];
+  const wrapVector = WRAP_VECTORS[options.direction];
   const step = { x: vector.x * strideX, y: vector.y * strideY };
   const wrapStep = { x: wrapVector.x * strideX, y: wrapVector.y * strideY };
 
@@ -220,21 +235,19 @@ export function planAutofill(
     return roomX && roomY;
   };
 
-  const offsets: Array<{ x: number; y: number }> = [];
-  let lines = 1;
+  const spots: AutofillSpot[] = [];
   /* Line 0 slot 0 is the selection itself, so the first copy is slot 1. */
   let line = 0;
   let slot = 1;
 
-  while (offsets.length < requested) {
+  for (let scanned = 0; scanned < MAX_SCANNED_CELLS; scanned += 1) {
     const offset = {
       x: step.x * slot + wrapStep.x * line,
       y: step.y * slot + wrapStep.y * line,
     };
 
     if (hasRoom(offset)) {
-      offsets.push(offset);
-      lines = Math.max(lines, line + 1);
+      spots.push({ ...offset, line });
       slot += 1;
       continue;
     }
@@ -247,12 +260,32 @@ export function planAutofill(
     slot = 0;
   }
 
-  return { fits: offsets.length, requested, offsets, lines };
+  return { spots };
+}
+
+/**
+ * The first `count` copies of a layout — what pressing the button creates.
+ *
+ * Fewer when the sheet has less room than was asked for; `fits` says how many.
+ */
+export function planAutofill(
+  layout: AutofillLayout,
+  count: number,
+): AutofillPlan {
+  const requested = Math.max(0, Math.floor(count));
+  const spots = layout.spots.slice(0, requested);
+  const last = spots[spots.length - 1];
+
+  return {
+    fits: spots.length,
+    requested,
+    offsets: spots.map(({ x, y }) => ({ x, y })),
+    lines: last ? last.line + 1 : 1,
+  };
 }
 
 interface FreeSpaceRequest {
   box: SelectionBox;
-  requested: number;
   strideX: number;
   strideY: number;
   gapX: number;
@@ -279,7 +312,6 @@ interface FreeSpaceRequest {
  */
 function packFreeSpace({
   box,
-  requested,
   strideX,
   strideY,
   gapX,
@@ -287,13 +319,7 @@ function packFreeSpace({
   marginX,
   marginY,
   occupied,
-}: FreeSpaceRequest): AutofillPlan {
-  const empty = { fits: 0, requested, offsets: [], lines: 1 };
-
-  // Artwork with no size has no lattice to walk; without this the step is
-  // zero and the scan never advances.
-  if (strideX <= TOLERANCE || strideY <= TOLERANCE) return empty;
-
+}: FreeSpaceRequest): AutofillLayout {
   /* Hidden artwork is not on the sheet — it is in the layer list. Filling
      around something the printer will never see would leave a hole in the
      middle of the sheet for no reason. */
@@ -337,28 +363,27 @@ function packFreeSpace({
     );
   };
 
-  const offsets: Array<{ x: number; y: number }> = [];
-  const rows = new Set<number>();
+  const spots: AutofillSpot[] = [];
+  /* Lines are the rows that took a copy, not the rows scanned: a row the fill
+     found full is not one it covers. */
+  let line = 0;
   let scanned = 0;
 
   for (let row = rowFrom; row <= rowTo; row += 1) {
+    const before = spots.length;
+
     for (let column = columnFrom; column <= columnTo; column += 1) {
-      if (offsets.length >= requested || scanned >= MAX_SCANNED_CELLS) break;
+      if (scanned >= MAX_SCANNED_CELLS) return { spots };
       scanned += 1;
 
       const offset = { x: strideX * column, y: strideY * row };
       if (!isClear(box.x + offset.x, box.y + offset.y)) continue;
 
-      offsets.push(offset);
-      rows.add(row);
+      spots.push({ ...offset, line });
     }
-    if (offsets.length >= requested || scanned >= MAX_SCANNED_CELLS) break;
+
+    if (spots.length > before) line += 1;
   }
 
-  return {
-    fits: offsets.length,
-    requested,
-    offsets,
-    lines: Math.max(1, rows.size),
-  };
+  return { spots };
 }

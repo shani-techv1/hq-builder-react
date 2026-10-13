@@ -15,8 +15,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   AUTOFILL_DEFAULTS,
   AUTOFILL_DIRECTIONS,
-  MAX_AUTOFILL_COPIES,
-  clampCopies,
+  layoutAutofill,
   planAutofill,
   type AutofillDirection,
 } from "@/lib/autofill";
@@ -45,9 +44,9 @@ const safeMarginLabel = (unit: MeasurementUnit) =>
  * describe the row: how many, which way, how far apart, and whether to stop at
  * the sheet's trim margin.
  *
- * The count is a request, not a promise — the panel says how many will really
- * fit before the button is pressed, because finding out afterwards means
- * undoing and guessing again.
+ * The count goes as high as the sheet has room for and no higher, and the panel
+ * says how many will really fit before the button is pressed, because finding
+ * out afterwards means undoing and guessing again.
  */
 export function AutofillPanel() {
   const { canvas, settings } = useEditorState();
@@ -75,27 +74,27 @@ export function AutofillPanel() {
   );
 
   /* Memoised because a free-space fill walks a grid over every object on the
-     sheet, and this runs on each render of a panel with four live controls. */
-  const plan = React.useMemo(
+     sheet. The count is not an input: typing in it only picks how many of
+     these spots to use, which should not mean walking the grid again. */
+  const layout = React.useMemo(
     () =>
-      planAutofill(
+      layoutAutofill(
         selectedObjects,
         canvas.sheetSize,
-        { count: requestedCount, direction, gapInches, keepInSafeZone },
+        { direction, gapInches, keepInSafeZone },
         canvas.objects,
       ),
     [
       selectedObjects,
       canvas.sheetSize,
       canvas.objects,
-      requestedCount,
       direction,
       gapInches,
       keepInSafeZone,
     ],
   );
 
-  if (!plan) {
+  if (!layout) {
     return (
       <PanelBody>
         <EmptyState
@@ -107,7 +106,11 @@ export function AutofillPanel() {
     );
   }
 
-  const requested = clampCopies(requestedCount);
+  /* Every spot the sheet has for a copy — the most one fill can make, so the
+     field stops there rather than at a number the sheet cannot hold. */
+  const capacity = layout.spots.length;
+  const plan = planAutofill(layout, requestedCount);
+  const { requested } = plan;
   /* Named, not counted, while there is one thing to name: "Aurora logo" says
      which piece is about to be repeated in a way that "1 image" does not. */
   const subject =
@@ -162,7 +165,7 @@ export function AutofillPanel() {
             onChange={setCount}
             onEmpty={() => setCount("")}
             min={0}
-            max={MAX_AUTOFILL_COPIES}
+            max={capacity}
             step={1}
           />
 
@@ -192,19 +195,12 @@ export function AutofillPanel() {
           />
         </div>
 
-        {requested === 0 ? (
-          /* Asking for none is not a problem to warn about — it is the field
-             waiting for a number, so it says what to do rather than what is
-             wrong. */
-          <ValidationBadge
-            tone="info"
-            label="No copies yet"
-            detail={`Type how many copies to add, up to ${MAX_AUTOFILL_COPIES}.`}
-          />
-        ) : plan.fits === 0 ? (
+        {capacity === 0 ? (
           /* A line fill wraps onto the next line before it gives up and a
              packing fill has looked everywhere, so either way this is the
-             sheet being full rather than one direction being blocked. */
+             sheet being full rather than one direction being blocked. Ahead
+             of the empty-field note, which would otherwise ask for a number
+             that can only be zero. */
           <ValidationBadge
             tone="warning"
             label={packing ? "No free space left" : "No room on the sheet"}
@@ -213,6 +209,17 @@ export function AutofillPanel() {
                 ? `Every spot this size inside ${boundary} is taken. Close the gap, make the artwork smaller, or clear some room.`
                 : `There is no space left inside ${boundary} for another copy this size. Close the gap, make the artwork smaller, or clear some room.`
             }
+          />
+        ) : requested === 0 ? (
+          /* Asking for none is not a problem to warn about — it is the field
+             waiting for a number, so it says what to do rather than what is
+             wrong. */
+          <ValidationBadge
+            tone="info"
+            label="No copies yet"
+            detail={`Type how many copies to add — ${
+              capacity === 1 ? "one fits" : `up to ${capacity} fit`
+            } inside ${boundary}.`}
           />
         ) : plan.fits < requested ? (
           /* A warning rather than a note: the button is about to do something

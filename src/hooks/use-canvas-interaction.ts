@@ -268,7 +268,7 @@ function documentReducer(state: CanvasState, action: CanvasAction): CanvasState 
     /**
      * A whole row, column or grid of copies, in one edit.
      *
-     * The offsets are worked out by `planAutofill` against the sheet, so this
+     * The offsets are worked out by `layoutAutofill` against the sheet, so this
      * places what it is given without clamping: a copy nudged back inside the
      * sheet would land on top of its neighbour, which is worse than the fill
      * simply stopping where it ran out of room — and the plan already stopped.
@@ -595,7 +595,7 @@ export interface CanvasInteraction {
   duplicateSelection: () => void;
   /**
    * Duplicate the selection once per offset, each offset being a distance from
-   * where the selection sits — see `planAutofill`, which works them out.
+   * where the selection sits — see `layoutAutofill`, which works them out.
    *
    * One undo step however many copies it makes, and the copies end up selected
    * so a second fill continues from them instead of restarting.
