@@ -39,6 +39,35 @@ function discard(canvas: Canvas, target: ManagedObject) {
   target.dispose();
 }
 
+/** Ids of whatever the canvas has selected, one per object. */
+function activeIds(canvas: Canvas): string[] {
+  return canvas
+    .getActiveObjects()
+    .map(objectIdOf)
+    .filter((id): id is string => Boolean(id));
+}
+
+/**
+ * Make the objects behind `ids` the canvas's selection: one directly, several
+ * as a multi-selection, none as no selection at all.
+ */
+function selectOnCanvas(
+  canvas: Canvas,
+  registry: Map<string, ManagedObject>,
+  ids: string[],
+) {
+  const targets = ids
+    .map((id) => registry.get(id))
+    .filter((target): target is ManagedObject => Boolean(target));
+
+  canvas.discardActiveObject();
+  if (targets.length === 1) {
+    canvas.setActiveObject(targets[0]);
+  } else if (targets.length > 1) {
+    canvas.setActiveObject(new ActiveSelection(targets, { canvas }));
+  }
+}
+
 /**
  * A counter that ticks every time the document finishes loading fonts.
  *
@@ -189,11 +218,7 @@ export function useFabricCanvas({
 
     const reportSelection = () => {
       if (applying.current) return;
-      const ids = canvas
-        .getActiveObjects()
-        .map(objectIdOf)
-        .filter((id): id is string => Boolean(id));
-      latest.current.onSelectionChange(ids);
+      latest.current.onSelectionChange(activeIds(canvas));
     };
 
     const reportTransform = (target: FabricObject) => {
@@ -305,6 +330,22 @@ export function useFabricCanvas({
      */
     applying.current = true;
     try {
+      /*
+       * A multi-selection is set aside for the pass and rebuilt after it.
+       *
+       * Objects selected together are positioned relative to the selection, not
+       * the sheet, so writing the stored sheet coordinates into them would shift
+       * every one by the selection's own offset — throwing a dragged block of
+       * artwork into a corner or off the sheet. Dissolving the selection puts
+       * them back on the sheet's plane, and rebuilding it fits the outline to
+       * wherever they now are.
+       */
+      const regroup =
+        canvas.getActiveObject() instanceof ActiveSelection
+          ? activeIds(canvas)
+          : null;
+      if (regroup) canvas.discardActiveObject();
+
       // Hidden objects leave the canvas but stay in state, so the layer list can
       // still show and restore them.
       const visible = objects.filter((object) => !object.hidden);
@@ -356,6 +397,10 @@ export function useFabricCanvas({
         canvas.moveObjectTo(target, index);
       });
 
+      // By id, so a member rebuilt in the pass is selected as its replacement
+      // and one removed in it is simply left out.
+      if (regroup) selectOnCanvas(canvas, registry.current, regroup);
+
       canvas.requestRenderAll();
 
       // Settles in one further pass: the corrected state measures the same, so
@@ -373,27 +418,14 @@ export function useFabricCanvas({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const current = canvas
-      .getActiveObjects()
-      .map(objectIdOf)
-      .filter((id): id is string => Boolean(id));
-
+    const current = activeIds(canvas);
     const unchanged =
       current.length === selectedIds.length &&
       current.every((id) => selectedIds.includes(id));
     if (unchanged) return;
 
-    const targets = selectedIds
-      .map((id) => registry.current.get(id))
-      .filter((target): target is ManagedObject => Boolean(target));
-
     applying.current = true;
-    canvas.discardActiveObject();
-    if (targets.length === 1) {
-      canvas.setActiveObject(targets[0]);
-    } else if (targets.length > 1) {
-      canvas.setActiveObject(new ActiveSelection(targets, { canvas }));
-    }
+    selectOnCanvas(canvas, registry.current, selectedIds);
     canvas.requestRenderAll();
     applying.current = false;
   }, [selectedIds, objects]);
