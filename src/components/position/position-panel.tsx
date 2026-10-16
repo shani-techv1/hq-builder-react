@@ -22,7 +22,7 @@ import { useEditorState } from "@/components/editor/editor-state";
 import { PropertyToggle } from "@/components/inspector/property-toggle";
 import { PanelBody } from "@/components/panels/panel-body";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { boundingBox, type CanvasObject } from "@/lib/canvas-objects";
+import { outlineBox, type CanvasObject } from "@/lib/canvas-objects";
 import { SHEET_SAFE_MARGIN_IN, fromInches, sheetInches } from "@/lib/workspace";
 import { cn } from "@/lib/utils";
 
@@ -53,7 +53,11 @@ export function PositionPanel() {
   const { selectedObjects } = canvas;
   const [keepInSafeZone, setKeepInSafeZone] = React.useState(true);
 
-  const box = boundingBox(selectedObjects);
+  const sheet = sheetInches(canvas.sheetSize);
+  // What the selection covers as drawn: a turned piece is lined up by the
+  // edges it shows, not by its stored box, which could leave it hanging off
+  // the sheet or stopped short of the edge it was sent to.
+  const box = outlineBox(selectedObjects, sheet);
 
   if (!box) {
     return (
@@ -67,7 +71,6 @@ export function PositionPanel() {
     );
   }
 
-  const sheet = sheetInches(canvas.sheetSize);
   /* The margin is a real distance, so it is a different percentage per axis. */
   const marginX = keepInSafeZone
     ? (SHEET_SAFE_MARGIN_IN / sheet.width) * 100

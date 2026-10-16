@@ -534,7 +534,8 @@ export interface SelectionBox {
  *
  * Rotation is ignored: a rotated object contributes its unrotated box. Real
  * editors do the same for multi-selections, and it keeps the overlay's maths
- * independent of how the canvas ends up transforming things.
+ * independent of how the canvas ends up transforming things. Where artwork
+ * actually prints is {@link outlineBox}.
  */
 export function boundingBox(objects: CanvasObject[]): SelectionBox | null {
   if (objects.length === 0) return null;
@@ -543,6 +544,94 @@ export function boundingBox(objects: CanvasObject[]): SelectionBox | null {
   const top = Math.min(...objects.map((object) => object.y));
   const right = Math.max(...objects.map((object) => object.x + object.width));
   const bottom = Math.max(...objects.map((object) => object.y + object.height));
+
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+/** A real width and height — a sheet's, in inches. */
+interface Dimensions {
+  width: number;
+  height: number;
+}
+
+/** A point on the sheet, in inches from its top-left corner. */
+export interface SheetPoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * An object's corners as it is drawn: its stored box turned clockwise by
+ * `rotation` about its centre, which is what the canvas and the printed sheet
+ * both turn it about. Clockwise from the top-left.
+ *
+ * In inches rather than the stored percentages: a sheet isn't square, so a
+ * percent across and a percent down are different lengths, and turning one
+ * into the other only means anything in real units.
+ */
+export function outlineInches(
+  object: CanvasObject,
+  sheet: Dimensions,
+): SheetPoint[] {
+  const width = (object.width / 100) * sheet.width;
+  const height = (object.height / 100) * sheet.height;
+  const centreX = (object.x / 100) * sheet.width + width / 2;
+  const centreY = (object.y / 100) * sheet.height + height / 2;
+  const angle = (object.rotation * Math.PI) / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+
+  return [
+    [-1, -1],
+    [1, -1],
+    [1, 1],
+    [-1, 1],
+  ].map(([alongX, alongY]) => {
+    const dx = (alongX * width) / 2;
+    const dy = (alongY * height) / 2;
+    // Clockwise, on a sheet whose y axis points down.
+    return { x: centreX + dx * cos - dy * sin, y: centreY + dx * sin + dy * cos };
+  });
+}
+
+/**
+ * Axis-aligned box around what `objects` cover on the sheet as drawn —
+ * rotation included — in sheet percentages.
+ *
+ * {@link boundingBox} is the stored, unrotated box, which is what the
+ * selection chrome hangs off. Anything deciding where artwork *prints* — what
+ * it runs into, how far it sits from an edge — needs this instead: a wide piece
+ * turned 90° is tall on the sheet, whatever its stored box says.
+ */
+export function outlineBox(
+  objects: CanvasObject[],
+  sheet: Dimensions,
+): SelectionBox | null {
+  if (objects.length === 0) return null;
+
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+
+  for (const object of objects) {
+    // Square to the sheet, the stored box is the outline. Read straight off
+    // it, so an unturned piece comes back exactly as stored rather than
+    // through a round trip in inches.
+    if (object.rotation % 180 === 0) {
+      left = Math.min(left, object.x);
+      top = Math.min(top, object.y);
+      right = Math.max(right, object.x + object.width);
+      bottom = Math.max(bottom, object.y + object.height);
+      continue;
+    }
+    for (const corner of outlineInches(object, sheet)) {
+      left = Math.min(left, (corner.x / sheet.width) * 100);
+      top = Math.min(top, (corner.y / sheet.height) * 100);
+      right = Math.max(right, (corner.x / sheet.width) * 100);
+      bottom = Math.max(bottom, (corner.y / sheet.height) * 100);
+    }
+  }
 
   return { x: left, y: top, width: right - left, height: bottom - top };
 }

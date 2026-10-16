@@ -12,7 +12,7 @@
  */
 
 import {
-  boundingBox,
+  outlineBox,
   type CanvasObject,
   type SelectionBox,
 } from "@/lib/canvas-objects";
@@ -158,6 +158,10 @@ const TOLERANCE = 1e-6;
  * so this is worked out once per change to the sheet or the settings and
  * {@link planAutofill} picks from it as the count is typed.
  *
+ * Everything is measured on what the artwork covers as drawn (`outlineBox`),
+ * not its stored box: a wide piece turned 90° is tall on the sheet, and copies
+ * spaced by its stored size would land on top of each other going down.
+ *
  * Returns `null` when there is nothing selected to copy.
  */
 export function layoutAutofill(
@@ -166,10 +170,10 @@ export function layoutAutofill(
   options: AutofillOptions,
   occupied: CanvasObject[],
 ): AutofillLayout | null {
-  const box = boundingBox(selection);
+  const sheet = sheetInches(sheetSize);
+  const box = outlineBox(selection, sheet);
   if (!box) return null;
 
-  const sheet = sheetInches(sheetSize);
   const gapInches = Math.max(0, options.gapInches);
 
   /* The gap as a share of each axis. A sheet is not square, so one distance
@@ -205,6 +209,7 @@ export function layoutAutofill(
       marginX,
       marginY,
       occupied,
+      sheet,
     });
   }
 
@@ -293,6 +298,7 @@ interface FreeSpaceRequest {
   marginX: number;
   marginY: number;
   occupied: CanvasObject[];
+  sheet: { width: number; height: number };
 }
 
 /**
@@ -319,11 +325,19 @@ function packFreeSpace({
   marginX,
   marginY,
   occupied,
+  sheet,
 }: FreeSpaceRequest): AutofillLayout {
   /* Hidden artwork is not on the sheet — it is in the layer list. Filling
      around something the printer will never see would leave a hole in the
-     middle of the sheet for no reason. */
-  const blockers = occupied.filter((object) => !object.hidden);
+     middle of the sheet for no reason.
+
+     Each is kept clear of by what it covers as drawn. A piece turned to an
+     angle that isn't square leaves the corners of that box empty; packing into
+     them would mean testing the exact shape, and a fill that leaves a little
+     film unused is better than one that prints on top of something. */
+  const blockers = occupied
+    .filter((object) => !object.hidden)
+    .flatMap((object) => outlineBox([object], sheet) ?? []);
 
   /* How many strides from the selection to each edge, on each axis. */
   const firstIndex = (start: number, stride: number, margin: number) =>
@@ -355,11 +369,11 @@ function packFreeSpace({
     const bottom = y + box.height + gapY;
 
     return !blockers.some(
-      (object) =>
-        left < object.x + object.width - TOLERANCE &&
-        object.x < right - TOLERANCE &&
-        top < object.y + object.height - TOLERANCE &&
-        object.y < bottom - TOLERANCE,
+      (blocker) =>
+        left < blocker.x + blocker.width - TOLERANCE &&
+        blocker.x < right - TOLERANCE &&
+        top < blocker.y + blocker.height - TOLERANCE &&
+        blocker.y < bottom - TOLERANCE,
     );
   };
 
