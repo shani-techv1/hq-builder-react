@@ -49,7 +49,7 @@ function resolveApiUrl(): string {
   const fromEnv = process.env.NEXT_PUBLIC_AUTH_API_URL;
   if (typeof fromEnv === "string" && fromEnv) return fromEnv;
 
-  return "https://highquality.allgovjobs.com/backend";
+  return "https://highquality-image.agiledigitaledge.dev/backend";
 }
 
 /** Trailing slashes are stripped, so a configured value can carry one safely. */
